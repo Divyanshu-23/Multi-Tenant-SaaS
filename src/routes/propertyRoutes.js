@@ -258,45 +258,68 @@ router.delete('/:id', writeRateLimiter, checkPermission('canDeleteProperty'), as
   }
 });
 
-// @route   POST /api/properties/:id/images - Add property images
-// @desc    Add or update property images
+// @route   POST /api/properties/:id/images - Add property images via file upload
+// @desc    Upload and add property images (local storage)
 // @access  Private (canEditProperty permission)
-router.post('/:id/images', checkPermission('canEditProperty'), [
-  body('images').isArray({ min: 1 }).withMessage('At least one image is required'),
-  body('images.*.url').notEmpty().isURL(),
-  body('images.*.caption').optional().trim(),
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
-    }
+// @note    This route now uses file upload, not URL-based images
+const { uploadImage } = require('../utils/fileUpload');
+const { saveFileLocally } = require('../config/storage');
 
+router.post('/:id/images', writeRateLimiter, checkPermission('canEditProperty'), uploadImage.array('images', 10), async (req, res) => {
+  try {
     const { id } = req.params;
-    const { organizationId } = req;
-    const { images } = req.body;
+    const { organizationId, user } = req;
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, error: 'No image files provided' });
+    }
 
     const property = await Property.findOne({ _id: id, organizationId });
     if (!property) {
       return res.status(404).json({ success: false, error: 'Property not found' });
     }
 
-    // Add new images
-    images.forEach((img, index) => {
-      property.images.push({
-        url: img.url,
-        caption: img.caption || '',
-        isPrimary: property.images.length === 0 && index === 0,
-        order: property.images.length + index,
-      });
-    });
+    const uploadedImages = [];
+
+    // Process each uploaded file
+    for (const file of req.files) {
+      // Validate file
+      if (file.size > 5 * 1024 * 1024) {
+        return res.status(400).json({ success: false, error: 'Each image must be under 5MB' });
+      }
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      if (!allowedTypes.includes(file.mimetype)) {
+        return res.status(400).json({ success: false, error: 'Invalid file type. Allowed: JPEG, PNG, WebP, GIF' });
+      }
+
+      // Save file locally
+      const fileInfo = await saveFileLocally(file, 'properties');
+
+      // Add to property images
+      const imageData = {
+        url: fileInfo.url,
+        filename: fileInfo.filename,
+        size: fileInfo.size,
+        mimetype: fileInfo.mimetype,
+        isPrimary: property.images.length === 0 && uploadedImages.length === 0,
+        order: property.images.length + uploadedImages.length,
+        uploadedAt: new Date(),
+      };
+
+      property.images.push(imageData);
+      uploadedImages.push(imageData);
+    }
 
     await property.save();
 
+    // Add activity log
+    property.addActivity(user.id, 'uploaded_images', `${req.files.length} images uploaded`, 'images', null, { count: req.files.length });
+
     res.status(201).json({
       success: true,
-      message: 'Images added successfully',
+      message: `${uploadedImages.length} images uploaded successfully`,
       images: property.images,
+      uploaded: uploadedImages,
     });
   } catch (error) {
     console.error('Add images error:', error);

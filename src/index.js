@@ -7,6 +7,7 @@ const morgan = require('morgan');
 const connectDB = require('./config/db');
 const { connectRedis } = require('./config/redis');
 const { initSocket } = require('./config/socket');
+const { setupQueueEvents } = require('./config/queue');
 const errorHandler = require('./middleware/errorHandler');
 const securityMiddleware = require('./middleware/security');
 
@@ -15,6 +16,18 @@ const authRoutes = require('./routes/authRoutes');
 const orgRoutes = require('./routes/orgRoutes');
 const propertyRoutes = require('./routes/propertyRoutes');
 const taskRoutes = require('./routes/taskRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
+const queueRoutes = require('./routes/queueRoutes');
+
+// Import storage config for static file serving
+const path = require('path');
+const { UPLOAD_DIR } = require('./config/storage');
+
+// Import workers (to register job processors)
+require('./workers/emailWorker');
+require('./workers/taskReminderWorker');
+require('./workers/analyticsWorker');
+require('./workers/cleanupWorker');
 
 const app = express();
 const server = http.createServer(app);
@@ -68,6 +81,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/orgs', orgRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/uploads', uploadRoutes);
+app.use('/api/queues', queueRoutes);
+
+// Static file serving for uploads
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Error handling (must be last)
 app.use(errorHandler);
@@ -80,6 +98,9 @@ const startServer = async () => {
 
     // Connect to Redis (non-blocking)
     await connectRedis();
+
+    // Setup queue event listeners
+    setupQueueEvents();
 
     // Start server
     server.listen(PORT, () => {

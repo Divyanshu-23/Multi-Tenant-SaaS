@@ -4,7 +4,7 @@ const express = require('express');
 const http = require('http');
 const morgan = require('morgan');
 
-const connectDB = require('./config/db');
+const { connectDB } = require('./config/db');
 const { connectRedis } = require('./config/redis');
 const { initSocket } = require('./config/socket');
 const { setupQueueEvents } = require('./config/queue');
@@ -158,6 +158,9 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-startServer();
+// Only start server if this file is run directly (not imported for tests)
+if (require.main === module) {
+  startServer();
+}
 
-module.exports = { app, server };
+module.exports = { app, server, startServer };

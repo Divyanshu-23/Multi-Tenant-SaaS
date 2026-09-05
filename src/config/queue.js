@@ -1,74 +1,75 @@
 // src/config/queue.js - Bull Queue Configuration for Background Jobs
 const Bull = require('bull');
-const { redisClient } = require('./redis');
 
 // Job queues configuration
+const emailQueue = new Bull('email-queue', {
+  redis: {
+    port: process.env.REDIS_PORT || 6379,
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: 0,
+  },
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 2000,
+    },
+    removeOnComplete: 100,
+    removeOnFail: 50,
+    timeout: 30000,
+  },
+});
+
+const taskReminderQueue = new Bull('task-reminder-queue', {
+  redis: {
+    port: process.env.REDIS_PORT || 6379,
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: 0,
+  },
+  defaultJobOptions: {
+    attempts: 2,
+    removeOnComplete: 50,
+    removeOnFail: 30,
+    delay: 60000, // Default 1 minute delay for testing
+  },
+});
+
+const analyticsQueue = new Bull('analytics-queue', {
+  redis: {
+    port: process.env.REDIS_PORT || 6379,
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: 0,
+  },
+  defaultJobOptions: {
+    attempts: 1,
+    removeOnComplete: 10,
+    removeOnFail: 10,
+  },
+});
+
+const cleanupQueue = new Bull('cleanup-queue', {
+  redis: {
+    port: process.env.REDIS_PORT || 6379,
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: 0,
+  },
+  defaultJobOptions: {
+    attempts: 1,
+    removeOnComplete: 5,
+    removeOnFail: 5,
+  },
+});
+
+// For backward compatibility
 const queues = {
-  // Email notification queue
-  email: new Bull('email-queue', {
-    redis: {
-      port: process.env.REDIS_PORT || 6379,
-      host: process.env.REDIS_HOST || '127.0.0.1',
-      password: process.env.REDIS_PASSWORD || undefined,
-      db: 0,
-    },
-    defaultJobOptions: {
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 2000,
-      },
-      removeOnComplete: 100,
-      removeOnFail: 50,
-      timeout: 30000,
-    },
-  }),
-
-  // Task reminder queue
-  taskReminder: new Bull('task-reminder-queue', {
-    redis: {
-      port: process.env.REDIS_PORT || 6379,
-      host: process.env.REDIS_HOST || '127.0.0.1',
-      password: process.env.REDIS_PASSWORD || undefined,
-      db: 0,
-    },
-    defaultJobOptions: {
-      attempts: 2,
-      removeOnComplete: 50,
-      removeOnFail: 30,
-      delay: 60000, // Default 1 minute delay for testing
-    },
-  }),
-
-  // Property analytics queue
-  analytics: new Bull('analytics-queue', {
-    redis: {
-      port: process.env.REDIS_PORT || 6379,
-      host: process.env.REDIS_HOST || '127.0.0.1',
-      password: process.env.REDIS_PASSWORD || undefined,
-      db: 0,
-    },
-    defaultJobOptions: {
-      attempts: 1,
-      removeOnComplete: 10,
-      removeOnFail: 10,
-    },
-  }),
-
-  // Cleanup and maintenance queue
-  cleanup: new Bull('cleanup-queue', {
-    redis: {
-      port: process.env.REDIS_PORT || 6379,
-      host: process.env.REDIS_HOST || '127.0.0.1',
-      password: process.env.REDIS_PASSWORD || undefined,
-      db: 0,
-    },
-    defaultJobOptions: {
-      attempts: 1,
-      removeOnComplete: 5,
-      removeOnFail: 5,
-    },
-  }),
+  email: emailQueue,
+  taskReminder: taskReminderQueue,
+  analytics: analyticsQueue,
+  cleanup: cleanupQueue,
 };
 
 // Queue names for reference
@@ -226,6 +227,10 @@ const setupQueueEvents = () => {
 };
 
 module.exports = {
+  emailQueue,
+  taskReminderQueue,
+  analyticsQueue,
+  cleanupQueue,
   queues,
   QUEUE_NAMES,
   JOB_TYPES,

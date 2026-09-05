@@ -27,6 +27,19 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Last name is required'],
     trim: true,
   },
+  phone: {
+    type: String,
+    trim: true,
+  },
+  role: {
+    type: String,
+    enum: ['user', 'admin', 'manager'],
+    default: 'user',
+  },
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
   verified: {
     type: Boolean,
     default: false,

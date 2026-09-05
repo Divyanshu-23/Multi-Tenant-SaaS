@@ -44,8 +44,12 @@ router.post('/register', [
       password,
       firstName,
       lastName,
-      verificationToken: generateToken(user._id, '1d'),
     });
+
+    // Generate verification token and tokens
+    const verificationToken = generateToken(user._id, '1d');
+    user.verificationToken = verificationToken;
+    await user.save();
 
     // Generate token
     const token = generateToken(user._id);

@@ -83,7 +83,7 @@ const generateDailyReport = async (organizationId) => {
 // Generate property statistics
 const generatePropertyStats = async (organizationId) => {
   const stats = await Property.aggregate([
-    { $match: { organizationId: require('mongoose').Types.ObjectId(organizationId) } },
+    { $match: { organizationId: new (require('mongoose').Types.ObjectId)(organizationId) } },
     {
       $group: {
         _id: null,

@@ -31,10 +31,22 @@ const userSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  termsAccepted: {
+    type: Boolean,
+    default: false,
+  },
+  termsAcceptedAt: Date,
   role: {
     type: String,
     enum: ['user', 'admin', 'manager'],
     default: 'user',
+  },
+  // Account type is selected at registration and cannot be changed later.
+  accountType: {
+    type: String,
+    enum: ['customer', 'buyer', 'renter', 'organization', 'broker', 'agent'],
+    default: 'organization',
+    immutable: true,
   },
   isActive: {
     type: Boolean,

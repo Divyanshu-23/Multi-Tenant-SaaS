@@ -149,6 +149,111 @@ router.get('/', checkPermission('canViewProperty'), [
   }
 });
 
+// @route   GET /api/properties/search/query - Search properties
+// @desc    Full-text search on properties
+// @access  Private (canViewProperty permission)
+router.get('/search/query', checkPermission('canViewProperty'), [
+  query('q').notEmpty().trim().withMessage('Search query is required'),
+  query('page').optional().isInt({ min: 1 }).toInt(),
+  query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const { q } = req.query;
+    const page = req.query.page || 1;
+    const limit = req.query.limit || 10;
+    const skip = (page - 1) * limit;
+    const { organizationId } = req;
+
+    const results = await Property.find(
+      { organizationId, $text: { $search: q } },
+      { score: { $meta: 'textScore' } }
+    )
+      .sort({ score: { $meta: 'textScore' } })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Property.countDocuments({ organizationId, $text: { $search: q } });
+
+    res.json({
+      success: true,
+      query: q,
+      count: results.length,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+      results,
+    });
+  } catch (error) {
+    console.error('Search properties error:', error);
+    res.status(500).json({ success: false, error: 'Server error searching properties' });
+  }
+});
+
+// @route   GET /api/properties/stats/overview - Property statistics
+// @desc    Get property statistics for organization
+// @access  Private (canViewProperty permission)
+router.get('/stats/overview', checkPermission('canViewProperty'), async (req, res) => {
+  try {
+    const { organizationId } = req;
+
+    const stats = await Property.aggregate([
+      { $match: { organizationId: new (require('mongoose').Types.ObjectId)(organizationId) } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          avgPrice: { $avg: '$price' },
+          minPrice: { $min: '$price' },
+          maxPrice: { $max: '$price' },
+          byStatus: { $push: '$status' },
+          byType: { $push: '$propertyType' },
+          totalViews: { $sum: '$views' },
+          totalLeads: { $sum: '$leads' },
+        },
+      },
+    ]);
+
+    const result = stats[0] || {
+      total: 0,
+      avgPrice: 0,
+      minPrice: 0,
+      maxPrice: 0,
+      byStatus: { available: 0, sold: 0, rented: 0, under_negotiation: 0, off_market: 0, draft: 0 },
+      byType: {},
+      totalViews: 0,
+      totalLeads: 0,
+    };
+
+    if (Array.isArray(result.byStatus)) {
+      const statusCounts = {};
+      result.byStatus.forEach((status) => {
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+      });
+      result.byStatus = statusCounts;
+    }
+    if (Array.isArray(result.byType)) {
+      const typeCounts = {};
+      result.byType.forEach((type) => {
+        typeCounts[type] = (typeCounts[type] || 0) + 1;
+      });
+      result.byType = typeCounts;
+    }
+
+    res.json({ success: true, stats: result });
+  } catch (error) {
+    console.error('Get stats error:', error);
+    res.status(500).json({ success: false, error: 'Server error fetching statistics' });
+  }
+});
+
 // @route   GET /api/properties/:id - Get single property with caching
 // @desc    Get detailed property information
 // @access  Private (canViewProperty permission)
@@ -324,105 +429,6 @@ router.post('/:id/images', writeRateLimiter, checkPermission('canEditProperty'),
   } catch (error) {
     console.error('Add images error:', error);
     res.status(500).json({ success: false, error: 'Server error adding images' });
-  }
-});
-
-// @route   GET /api/properties/search - Search properties
-// @desc    Full-text search on properties
-// @access  Private (canViewProperty permission)
-router.get('/search/query', checkPermission('canViewProperty'), [
-  query('q').notEmpty().trim().withMessage('Search query is required'),
-  query('page').optional().isInt({ min: 1 }).toInt(),
-  query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
-    }
-
-    const { q } = req.query;
-    const page = req.query.page || 1;
-    const limit = req.query.limit || 10;
-    const skip = (page - 1) * limit;
-    const { organizationId } = req;
-
-    const results = await Property.find(
-      { organizationId, $text: { $search: q } },
-      { score: { $meta: 'textScore' } }
-    )
-      .sort({ score: { $meta: 'textScore' } })
-      .skip(skip)
-      .limit(limit);
-
-    const total = await Property.countDocuments({ organizationId, $text: { $search: q } });
-
-    res.json({
-      success: true,
-      query: q,
-      count: results.length,
-      pagination: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit),
-      },
-      results,
-    });
-  } catch (error) {
-    console.error('Search properties error:', error);
-    res.status(500).json({ success: false, error: 'Server error searching properties' });
-  }
-});
-
-// @route   GET /api/properties/stats - Property statistics
-// @desc    Get property statistics for organization
-// @access  Private (canViewProperty permission)
-router.get('/stats/overview', checkPermission('canViewProperty'), async (req, res) => {
-  try {
-    const { organizationId } = req;
-
-    const stats = await Property.aggregate([
-      { $match: { organizationId: require('mongoose').Types.ObjectId(organizationId) } },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: 1 },
-          avgPrice: { $avg: '$price' },
-          minPrice: { $min: '$price' },
-          maxPrice: { $max: '$price' },
-          byStatus: {
-            $push: {
-              status: '$status',
-              count: 1,
-            },
-          },
-          byType: {
-            $push: {
-              type: '$propertyType',
-              count: 1,
-            },
-          },
-          totalViews: { $sum: '$views' },
-          totalLeads: { $sum: '$leads' },
-        },
-      },
-    ]);
-
-    res.json({
-      success: true,
-      stats: stats[0] || {
-        total: 0,
-        avgPrice: 0,
-        minPrice: 0,
-        maxPrice: 0,
-        totalViews: 0,
-        totalLeads: 0,
-      },
-    });
-  } catch (error) {
-    console.error('Get stats error:', error);
-    res.status(500).json({ success: false, error: 'Server error fetching statistics' });
   }
 });
 

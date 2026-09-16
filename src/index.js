@@ -24,6 +24,9 @@ const adminRoutes = require('./routes/adminRoutes');
 const path = require('path');
 const { UPLOAD_DIR } = require('./config/storage');
 
+// Frontend static directory
+const PUBLIC_DIR = path.join(__dirname, '../public');
+
 // Import workers (to register job processors)
 require('./workers/emailWorker');
 require('./workers/taskReminderWorker');
@@ -56,11 +59,17 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Welcome route
+// Welcome route - serves the website for browsers, JSON for API clients
 app.get('/', (req, res) => {
+  const accept = req.headers.accept || '';
+  if (accept.includes('text/html')) {
+    return res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  }
+
   res.json({
     message: 'Welcome to Real Estate SaaS API',
     version: '1.0.0',
+    webApp: 'Open the web dashboard at http://localhost:' + PORT + '/',
     features: {
       authentication: 'JWT auth, registration, password reset',
       multi_tenancy: 'Organization-based data isolation',
@@ -73,6 +82,7 @@ app.get('/', (req, res) => {
       organizations: '/api/orgs',
       properties: '/api/properties',
       tasks: '/api/tasks',
+      webApp: '/',
     },
   });
 });
@@ -88,6 +98,17 @@ app.use('/api/admin', adminRoutes);
 
 // Static file serving for uploads
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Static file serving for the web frontend
+app.use(express.static(PUBLIC_DIR));
+
+// SPA catch-all - serve the dashboard for any non-API route
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) {
+    return next();
+  }
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
 
 // Error handling (must be last)
 app.use(errorHandler);

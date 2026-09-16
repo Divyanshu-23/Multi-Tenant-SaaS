@@ -2,6 +2,7 @@
 const mongoose = require('mongoose');
 const { connectDB, disconnectDB } = require('../src/config/db');
 const { connectRedis, disconnectRedis } = require('../src/config/redis');
+const env = require('../src/config/env');
 
 // Set test timeout
 jest.setTimeout(30000);
@@ -15,8 +16,9 @@ global.testOrgId = null;
 
 // Connect to test database before all tests
 beforeAll(async () => {
-  // Use test database
-  const testDbUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/real-estate-saas-test';
+  // CRITICAL: always use a dedicated TEST database - never the development DB.
+  // The afterAll hook wipes every collection in the connected database.
+  const testDbUri = env.mongodb.testUri || 'mongodb://localhost:27017/real-estate-saas-test';
 
   try {
     await connectDB(testDbUri);

@@ -13,7 +13,10 @@ describe('Auth API Integration Tests', () => {
     lastName: 'Test',
     email: `integration_${Date.now()}@test.com`,
     password: 'TestPassword123!',
-    phone: '+1234567890'
+    phone: '1234567890',
+    accountType: 'organization',
+    confirmPassword: 'TestPassword123!',
+    termsAccepted: true
   };
 
   let createdUserId = null;
@@ -141,6 +144,84 @@ describe('Auth API Integration Tests', () => {
       expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error');
       expect(response.body.error).toMatch(/invalid.*credentials/i);
+    });
+  });
+
+  describe('Account type selection', () => {
+    test('should register a customer account and return its immutable type', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          ...testUserData,
+          email: `customer_${Date.now()}@test.com`,
+          accountType: 'customer',
+        });
+
+      expect(response.status).toBe(201);
+      expect(response.body.user.accountType).toBe('customer');
+
+      const me = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${response.body.token}`);
+
+      expect(me.status).toBe(200);
+      expect(me.body.user.accountType).toBe('customer');
+
+      const savedUser = await User.findById(response.body.user.id);
+      savedUser.accountType = 'organization';
+      await savedUser.save();
+
+      const unchangedUser = await User.findById(response.body.user.id);
+      expect(unchangedUser.accountType).toBe('customer');
+    });
+
+    test('should reject an invalid account type', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          ...testUserData,
+          email: `invalid_account_type_${Date.now()}@test.com`,
+          accountType: 'both',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    test('should reject a password without required complexity', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({ ...testUserData, email: `weak_complexity_${Date.now()}@test.com`, password: 'password123', confirmPassword: 'password123' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    test('should reject mismatched confirmation password', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({ ...testUserData, email: `mismatch_${Date.now()}@test.com`, confirmPassword: 'DifferentPassword123!' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    test('should reject registration without terms acceptance', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({ ...testUserData, email: `no_terms_${Date.now()}@test.com`, termsAccepted: false });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    test('should reject a phone number that is not exactly 10 digits', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({ ...testUserData, email: `bad_phone_${Date.now()}@test.com`, phone: '12345678901' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
     });
   });
 

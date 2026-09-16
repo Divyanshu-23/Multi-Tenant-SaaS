@@ -4,8 +4,20 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
 const securityMiddleware = (app) => {
-  // Set security headers
-  app.use(helmet());
+  // Set security headers with CSP configured for static frontend
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'http://localhost:5000'],
+        connectSrc: ["'self'", 'ws:', 'wss:'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        frameSrc: ["'none'"],
+      },
+    },
+  }));
 
   // Enable CORS
   app.use(cors({

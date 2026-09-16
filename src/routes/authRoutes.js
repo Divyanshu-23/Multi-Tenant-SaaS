@@ -17,9 +17,18 @@ const router = express.Router();
 // @access  Public
 router.post('/register', [
   body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('password')
+    .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
+    .matches(/[a-z]/).withMessage('Password must include a lowercase letter')
+    .matches(/[A-Z]/).withMessage('Password must include an uppercase letter')
+    .matches(/\d/).withMessage('Password must include a number')
+    .matches(/[^A-Za-z\d]/).withMessage('Password must include a special character'),
+  body('confirmPassword').custom((value, { req }) => value === req.body.password).withMessage('Passwords do not match'),
   body('firstName').notEmpty().withMessage('First name is required'),
   body('lastName').notEmpty().withMessage('Last name is required'),
+  body('phone').optional({ checkFalsy: true }).matches(/^\d{10}$/).withMessage('Phone number must contain exactly 10 digits'),
+  body('termsAccepted').custom((value) => value === true || value === 'true').withMessage('You must accept the terms and privacy policy'),
+  body('accountType').optional().isIn(['customer', 'buyer', 'renter', 'organization', 'broker', 'agent']).withMessage('Select a valid account type'),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -27,7 +36,7 @@ router.post('/register', [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { email, password, firstName, lastName } = req.body;
+    const { email, password, firstName, lastName, phone, accountType = 'organization' } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -44,6 +53,10 @@ router.post('/register', [
       password,
       firstName,
       lastName,
+      phone,
+      accountType,
+      termsAccepted: true,
+      termsAcceptedAt: new Date(),
     });
 
     // Generate verification token and tokens
@@ -71,6 +84,7 @@ router.post('/register', [
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        accountType: user.accountType,
       },
       token,
       refreshToken,
@@ -133,6 +147,7 @@ router.post('/login', async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         verified: user.verified,
+        accountType: user.accountType,
       },
       token,
       refreshToken,
@@ -143,6 +158,49 @@ router.post('/login', async (req, res) => {
       success: false,
       error: 'Server error during login',
     });
+  }
+});
+
+// @route   GET /api/auth/me
+// @desc    Get current user profile and organizations
+// @access  Private
+router.get('/me', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const memberships = await Member.find({ userId: user._id, status: 'active' })
+      .populate('organizationId', 'name slug tier status branding settings createdAt');
+
+    const organizations = memberships.map((m) => ({
+      id: m.organizationId._id,
+      name: m.organizationId.name,
+      slug: m.organizationId.slug,
+      tier: m.organizationId.tier,
+      role: m.role,
+      memberId: m._id,
+    }));
+
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        role: user.role,
+        accountType: user.accountType,
+        verified: user.verified,
+      },
+      organizations,
+    });
+  } catch (error) {
+    console.error('Get current user error:', error);
+    res.status(500).json({ success: false, error: 'Server error fetching user' });
   }
 });
 

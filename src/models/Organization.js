@@ -7,6 +7,11 @@ const organizationSchema = new mongoose.Schema({
     required: [true, 'Organization name is required'],
     trim: true,
   },
+  description: {
+    type: String,
+    trim: true,
+    maxlength: [1000, 'Description cannot exceed 1000 characters'],
+  },
   slug: {
     type: String,
     unique: true,

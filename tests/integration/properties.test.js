@@ -1,528 +1,428 @@
 ﻿/**
- * Property Management API Integration Tests
+ * Property API Integration Tests
+ * Verifies property CRUD, listing filters, search, and stats
+ * against the real API contract (property routes run inside org context).
  */
 const request = require('supertest');
 const { app } = require('../../src/index');
 const User = require('../../src/models/User');
 const Organization = require('../../src/models/Organization');
+const Member = require('../../src/models/Member');
 const Property = require('../../src/models/Property');
 
-describe('Property Management API Integration Tests', () => {
-  // Test data
-  const user1Data = {
-    firstName: 'PropertyTest',
-    lastName: 'User1',
-    email: `propertytest_user1_${Date.now()}@test.com`,
-    password: 'TestPassword123!',
-    phone: '+1234567890'
-  };
+const propertyPayload = (overrides = {}) => ({
+  title: 'Luxury Apartment',
+  description: 'A beautiful modern apartment in the heart of the city with sea views and premium finishes.',
+  propertyType: 'apartment',
+  listingType: 'sale',
+  price: 5000000,
+  location: {
+    address: '123 Main Street',
+    city: 'Mumbai',
+    state: 'Maharashtra',
+    country: 'India',
+    pincode: '400001',
+    coordinates: { lat: 19.076, lng: 72.8777 },
+  },
+  features: {
+    superArea: 1200,
+    bedrooms: 3,
+    bathrooms: 2,
+    parking: 2,
+    furnishing: 'semi_furnished',
+    balcony: true,
+  },
+  area: {
+    superArea: 1200,
+    carpetArea: 950,
+  },
+  owner: {
+    name: 'Ramesh Kumar',
+    phone: '+919876543210',
+    email: 'ramesh@example.com',
+  },
+  status: 'available',
+  ...overrides,
+});
 
-  const user2Data = {
+describe('Property API Integration Tests', () => {
+  const suffix = Date.now();
+  const makeUser = (n) => ({
     firstName: 'PropertyTest',
-    lastName: 'User2',
-    email: `propertytest_user2_${Date.now()}@test.com`,
+    lastName: `User${n}`,
+    email: `propertytest_user${n}_${suffix}@test.com`,
     password: 'TestPassword123!',
-    phone: '+2234567890'
-  };
+    phone: `${n}42345678${n}`,
+    confirmPassword: 'TestPassword123!',
+    termsAccepted: true,
+    accountType: 'organization',
+  });
 
-  let user1Token = null;
-  let user2Token = null;
-  let user1Id = null;
-  let orgId = null;
-  let propertyId = null;
+  let user1Token;
+  let user1Id;
+  let user2Token;
+  let orgId;
 
   beforeAll(async () => {
-    // Clean up before tests
     await User.deleteMany({ email: { $regex: /propertytest/ } });
     await Organization.deleteMany({});
+    await Member.deleteMany({});
     await Property.deleteMany({});
-  });
 
-  beforeEach(async () => {
-    // Register users
-    const user1Res = await request(app)
-      .post('/api/auth/register')
-      .send(user1Data);
+    const u1 = await request(app).post('/api/auth/register').send(makeUser(1));
+    const u2 = await request(app).post('/api/auth/register').send(makeUser(2));
+    user1Token = u1.body.token;
+    user2Token = u2.body.token;
+    user1Id = u1.body.user.id;
 
-    const user2Res = await request(app)
-      .post('/api/auth/register')
-      .send(user2Data);
-
-    user1Token = user1Res.body.token;
-    user2Token = user2Res.body.token;
-    user1Id = user1Res.body.user.id;
-
-    // Create organization for user1
-    const orgRes = await request(app)
+    const orgResponse = await request(app)
       .post('/api/orgs')
       .set('Authorization', `Bearer ${user1Token}`)
-      .send({
-        name: 'Test Property Organization',
-        description: 'Test Description'
-      });
-
-    orgId = orgRes.body.data.organization._id;
+      .send({ name: 'PropertyTest Org' });
+    orgId = orgResponse.body.data.organization._id;
   });
 
-  describe('POST /api/properties', () => {
-    const propertyData = {
-      title: 'Luxury Beachfront Villa',
-      description: 'Beautiful 4BHK villa with private beach access',
-      propertyType: 'villa',
-      listingType: 'sale',
-      price: 15000000,
-      status: 'available',
-      location: {
-        address: '456 Ocean Drive',
-        city: 'Mumbai',
-        state: 'Maharashtra',
-        country: 'India',
-        pincode: '400001'
-      },
-      features: {
-        bedrooms: 4,
-        bathrooms: 3,
-        superArea: 2500,
-        coveredArea: 2000
-      },
-      owner: {
-        name: 'John Smith',
-        phone: '+9876543210',
-        email: 'john.smith@example.com'
-      }
-    };
-
-    test('should create a property successfully', async () => {
-      const response = await request(app)
-        .post('/api/properties')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId)
-        .send(propertyData);
-
-      expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('success', true);
-      expect(response.body).toHaveProperty('message', 'Property created successfully');
-      expect(response.body.data).toHaveProperty('property');
-      expect(response.body.data.property).toHaveProperty('title', propertyData.title);
-      expect(response.body.data.property).toHaveProperty('price', propertyData.price);
-      expect(response.body.data.property).toHaveProperty('organization', orgId);
-      expect(response.body.data.property).toHaveProperty('createdBy', user1Id);
-      expect(response.body.data.property.location).toMatchObject(propertyData.location);
-      expect(response.body.data.property.features).toMatchObject(propertyData.features);
-
-      propertyId = response.body.data.property._id;
-    });
-
-    test('should reject property creation without organization header', async () => {
-      const response = await request(app)
-        .post('/api/properties')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .send(propertyData);
-
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('success', false);
-      expect(response.body.message).toMatch(/organization.*required/i);
-    });
-
-    test('should reject property creation with invalid organization access', async () => {
-      const response = await request(app)
-        .post('/api/properties')
-        .set('Authorization', `Bearer ${user2Token}`) // User2 doesn't have access to org
-        .set('x-organization-id', orgId)
-        .send(propertyData);
-
-      expect(response.status).toBe(403);
-      expect(response.body).toHaveProperty('success', false);
-    });
-
-    test('should reject property creation with invalid data', async () => {
-      const invalidData = {
-        title: '',
-        price: -1000 // Invalid price
-      };
-
-      const response = await request(app)
-        .post('/api/properties')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId)
-        .send(invalidData);
-
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('success', false);
-    });
-  });
-
-  describe('GET /api/properties', () => {
-    beforeEach(async () => {
-      // Create multiple properties
-      const properties = [
-        {
-          title: 'Property 1',
-          description: 'Description 1',
-          propertyType: 'apartment',
-          listingType: 'sale',
-          price: 5000000,
-          status: 'available',
-          location: { address: 'Address 1', city: 'City1' }
-        },
-        {
-          title: 'Property 2',
-          description: 'Description 2',
-          propertyType: 'villa',
-          listingType: 'rent',
-          price: 30000,
-          status: 'sold',
-          location: { address: 'Address 2', city: 'City2' }
-        },
-        {
-          title: 'Property 3',
-          description: 'Description 3',
-          propertyType: 'apartment',
-          listingType: 'sale',
-          price: 8000000,
-          status: 'available',
-          location: { address: 'Address 3', city: 'City1' }
-        }
-      ];
-
-      for (const prop of properties) {
-        await request(app)
-          .post('/api/properties')
-          .set('Authorization', `Bearer ${user1Token}`)
-          .set('x-organization-id', orgId)
-          .send(prop);
-      }
-    });
-
-    test('should list properties with pagination', async () => {
-      const response = await request(app)
-        .get('/api/properties')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('success', true);
-      expect(response.body.data).toHaveProperty('properties');
-      expect(Array.isArray(response.body.data.properties)).toBe(true);
-      expect(response.body.data.properties).toHaveLength(3);
-      expect(response.body.data).toHaveProperty('pagination');
-      expect(response.body.data.pagination).toHaveProperty('total', 3);
-    });
-
-    test('should filter properties by status', async () => {
-      const response = await request(app)
-        .get('/api/properties?status=available')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(response.status).toBe(200);
-      expect(response.body.data.properties).toHaveLength(2); // Only available properties
-      response.body.data.properties.forEach(property => {
-        expect(property.status).toBe('available');
-      });
-    });
-
-    test('should filter properties by property type', async () => {
-      const response = await request(app)
-        .get('/api/properties?propertyType=apartment')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(response.status).toBe(200);
-      expect(response.body.data.properties).toHaveLength(2); // Only apartments
-      response.body.data.properties.forEach(property => {
-        expect(property.propertyType).toBe('apartment');
-      });
-    });
-
-    test('should filter properties by price range', async () => {
-      const response = await request(app)
-        .get('/api/properties?minPrice=6000000')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(response.status).toBe(200);
-      expect(response.body.data.properties).toHaveLength(1);
-      expect(response.body.data.properties[0].price).toBeGreaterThanOrEqual(6000000);
-    });
-  });
-
-  describe('GET /api/properties/:id', () => {
-    beforeEach(async () => {
-      // Create a property
-      const response = await request(app)
-        .post('/api/properties')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId)
-        .send({
-          title: 'Test Property Details',
-          description: 'Test Description',
-          propertyType: 'apartment',
-          listingType: 'sale',
-          price: 5000000,
-          location: { address: 'Test Address', city: 'Test City' }
-        });
-
-      propertyId = response.body.data.property._id;
-    });
-
-    test('should get property details successfully', async () => {
-      const response = await request(app)
-        .get(`/api/properties/${propertyId}`)
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('success', true);
-      expect(response.body.data).toHaveProperty('property');
-      expect(response.body.data.property).toHaveProperty('_id', propertyId);
-      expect(response.body.data.property).toHaveProperty('title', 'Test Property Details');
-    });
-
-    test('should reject access from unauthorized organization', async () => {
-      // Create another organization
-      const orgRes = await request(app)
-        .post('/api/orgs')
-        .set('Authorization', `Bearer ${user2Token}`)
-        .send({
-          name: 'Another Organization',
-          description: 'Another Description'
-        });
-
-      const anotherOrgId = orgRes.body.data.organization._id;
-
-      const response = await request(app)
-        .get(`/api/properties/${propertyId}`)
-        .set('Authorization', `Bearer ${user2Token}`)
-        .set('x-organization-id', anotherOrgId); // Different org
-
-      expect(response.status).toBe(403);
-      expect(response.body).toHaveProperty('success', false);
-    });
-
-    test('should return 404 for non-existent property', async () => {
-      const response = await request(app)
-        .get('/api/properties/507f1f77bcf86cd799439011') // Invalid ObjectId
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(response.status).toBe(404);
-      expect(response.body).toHaveProperty('success', false);
-    });
-  });
-
-  describe('PUT /api/properties/:id', () => {
-    beforeEach(async () => {
-      // Create a property
-      const response = await request(app)
-        .post('/api/properties')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId)
-        .send({
-          title: 'Property to Update',
-          description: 'Old Description',
-          propertyType: 'apartment',
-          listingType: 'sale',
-          price: 5000000,
-          location: { address: 'Old Address', city: 'Old City' }
-        });
-
-      propertyId = response.body.data.property._id;
-    });
-
-    test('should update property successfully', async () => {
-      const updateData = {
-        title: 'Updated Property Title',
-        description: 'Updated Description',
-        price: 5500000,
-        status: 'sold'
-      };
-
-      const response = await request(app)
-        .put(`/api/properties/${propertyId}`)
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId)
-        .send(updateData);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('success', true);
-      expect(response.body.data.property).toHaveProperty('title', updateData.title);
-      expect(response.body.data.property).toHaveProperty('description', updateData.description);
-      expect(response.body.data.property).toHaveProperty('price', updateData.price);
-      expect(response.body.data.property).toHaveProperty('status', updateData.status);
-    });
-
-    test('should reject update by unauthorized user', async () => {
-      const response = await request(app)
-        .put(`/api/properties/${propertyId}`)
-        .set('Authorization', `Bearer ${user2Token}`)
-        .set('x-organization-id', orgId)
-        .send({ title: 'Unauthorized Update' });
-
-      expect(response.status).toBe(403);
-      expect(response.body).toHaveProperty('success', false);
-    });
-  });
-
-  describe('DELETE /api/properties/:id', () => {
-    beforeEach(async () => {
-      // Create a property
-      const response = await request(app)
-        .post('/api/properties')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId)
-        .send({
-          title: 'Property to Delete',
-          description: 'Delete Description',
-          propertyType: 'apartment',
-          listingType: 'sale',
-          price: 5000000,
-          location: { address: 'Delete Address', city: 'Delete City' }
-        });
-
-      propertyId = response.body.data.property._id;
-    });
-
-    test('should delete property successfully', async () => {
-      const response = await request(app)
-        .delete(`/api/properties/${propertyId}`)
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('success', true);
-      expect(response.body.message).toMatch(/deleted.*successfully/i);
-
-      // Verify property is actually deleted
-      const verifyResponse = await request(app)
-        .get(`/api/properties/${propertyId}`)
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(verifyResponse.status).toBe(404);
-    });
-
-    test('should reject delete by unauthorized user', async () => {
-      const response = await request(app)
-        .delete(`/api/properties/${propertyId}`)
-        .set('Authorization', `Bearer ${user2Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(response.status).toBe(403);
-      expect(response.body).toHaveProperty('success', false);
-    });
-  });
-
-  describe('GET /api/properties/search/query', () => {
-    beforeEach(async () => {
-      // Create properties with different searchable content
-      const properties = [
-        {
-          title: 'Luxury Apartment Mumbai',
-          description: 'Beautiful apartment in South Mumbai',
-          propertyType: 'apartment',
-          listingType: 'sale',
-          price: 8000000,
-          location: { city: 'Mumbai', address: 'South Mumbai' }
-        },
-        {
-          title: 'Beach Villa Goa',
-          description: 'Private beach access villa',
-          propertyType: 'villa',
-          listingType: 'rent',
-          price: 25000,
-          location: { city: 'Goa', address: 'Baga Beach' }
-        },
-        {
-          title: 'Mumbai Office Space',
-          description: 'Commercial property in Bandra',
-          propertyType: 'commercial',
-          listingType: 'sale',
-          price: 12000000,
-          location: { city: 'Mumbai', address: 'Bandra' }
-        }
-      ];
-
-      for (const prop of properties) {
-        await request(app)
-          .post('/api/properties')
-          .set('Authorization', `Bearer ${user1Token}`)
-          .set('x-organization-id', orgId)
-          .send(prop);
-      }
-    });
-
-    test('should search properties by text query', async () => {
-      const response = await request(app)
-        .get('/api/properties/search/Mumbai')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(response.status).toBe(200);
-      expect(response.body.data.properties).toHaveLength(2); // Properties with "Mumbai" in title or description
-    });
-
-    test('should return empty results for no matches', async () => {
-      const response = await request(app)
-        .get('/api/properties/search/nonexistent')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(response.status).toBe(200);
-      expect(response.body.data.properties).toHaveLength(0);
-    });
-  });
-
-  describe('GET /api/properties/stats/overview', () => {
-    beforeEach(async () => {
-      // Create properties with different statuses
-      const properties = [
-        { status: 'available', price: 5000000 },
-        { status: 'available', price: 3000000 },
-        { status: 'sold', price: 8000000 },
-        { status: 'rented', price: 20000 }
-      ];
-
-      for (const [index, prop] of properties.entries()) {
-        await request(app)
-          .post('/api/properties')
-          .set('Authorization', `Bearer ${user1Token}`)
-          .set('x-organization-id', orgId)
-          .send({
-            title: `Property ${index + 1}`,
-            description: `Description ${index + 1}`,
-            propertyType: 'apartment',
-            listingType: 'sale',
-            price: prop.price,
-            status: prop.status,
-            location: { address: `Address ${index + 1}`, city: 'Test City' }
-          });
-      }
-    });
-
-    test('should get property statistics', async () => {
-      const response = await request(app)
-        .get('/api/properties/stats/overview')
-        .set('Authorization', `Bearer ${user1Token}`)
-        .set('x-organization-id', orgId);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('success', true);
-      expect(response.body.data).toHaveProperty('totalProperties', 4);
-      expect(response.body.data).toHaveProperty('totalValue');
-      expect(response.body.data).toHaveProperty('averagePrice');
-      expect(response.body.data).toHaveProperty('statusDistribution');
-      expect(response.body.data.statusDistribution).toHaveProperty('available', 2);
-      expect(response.body.data.statusDistribution).toHaveProperty('sold', 1);
-      expect(response.body.data.statusDistribution).toHaveProperty('rented', 1);
-    });
-  });
-
-  // Clean up after all tests
   afterAll(async () => {
     await User.deleteMany({ email: { $regex: /propertytest/ } });
     await Organization.deleteMany({});
+    await Member.deleteMany({});
     await Property.deleteMany({});
   });
-});
 
+  const orgHeaders = () => ({
+    Authorization: `Bearer ${user1Token}`,
+    'x-organization-id': orgId,
+  });
+
+  describe('POST /api/properties - Create property', () => {
+    test('should create a property successfully', async () => {
+      const response = await request(app)
+        .post('/api/properties')
+        .set(orgHeaders())
+        .send(propertyPayload({ title: 'Create Test Apartment' }));
+
+      expect(response.status).toBe(201);
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Property created successfully');
+      expect(response.body.property).toBeDefined();
+      expect(response.body.property.id).toBeDefined();
+      expect(response.body.property.title).toBe('Create Test Apartment');
+      expect(response.body.property.price).toBe(5000000);
+      expect(response.body.property.status).toBe('available');
+      expect(response.body.property.location.city).toBe('Mumbai');
+    });
+
+    test('should reject creation without org context', async () => {
+      const response = await request(app)
+        .post('/api/properties')
+        .set('Authorization', `Bearer ${user1Token}`)
+        .send(propertyPayload());
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    test('should reject creation by a non-member of the organization', async () => {
+      const response = await request(app)
+        .post('/api/properties')
+        .set('Authorization', `Bearer ${user2Token}`)
+        .set('x-organization-id', orgId)
+        .send(propertyPayload());
+
+      expect(response.status).toBe(403);
+      expect(response.body.success).toBe(false);
+    });
+
+    test('should reject invalid property data', async () => {
+      const response = await request(app)
+        .post('/api/properties')
+        .set(orgHeaders())
+        .send(propertyPayload({ title: '', price: -1000, location: { city: 'Mumbai' } }));
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.errors).toBeDefined();
+    });
+  });
+
+  describe('GET /api/properties - List properties', () => {
+    beforeEach(async () => {
+      await Property.deleteMany({ organizationId: orgId });
+      const base = {
+        s1: propertyPayload({ title: 'List Apartment A', status: 'available', propertyType: 'apartment', price: 5000000 }),
+        s2: propertyPayload({ title: 'List Villa B', status: 'sold', propertyType: 'villa', price: 3000000 }),
+        s3: propertyPayload({ title: 'List Apartment C', status: 'available', propertyType: 'apartment', price: 8000000 }),
+      };
+      await request(app).post('/api/properties').set(orgHeaders()).send(propertyPayload(base.s1));
+      await request(app).post('/api/properties').set(orgHeaders()).send(propertyPayload(base.s2));
+      await request(app).post('/api/properties').set(orgHeaders()).send(propertyPayload(base.s3));
+    });
+
+    test('should list all properties with pagination', async () => {
+      const response = await request(app)
+        .get('/api/properties')
+        .set(orgHeaders());
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.count).toBe(3);
+      expect(response.body.pagination.total).toBe(3);
+      expect(response.body.properties).toHaveLength(3);
+      expect(response.body.properties[0].title).toBeDefined();
+    });
+
+    test('should filter by status', async () => {
+      const response = await request(app)
+        .get('/api/properties?status=available')
+        .set(orgHeaders());
+
+      expect(response.status).toBe(200);
+      expect(response.body.properties).toHaveLength(2);
+      expect(response.body.properties.every((p) => p.status === 'available')).toBe(true);
+    });
+
+    test('should filter by propertyType', async () => {
+      const response = await request(app)
+        .get('/api/properties?propertyType=villa')
+        .set(orgHeaders());
+
+      expect(response.status).toBe(200);
+      expect(response.body.properties).toHaveLength(1);
+      expect(response.body.properties[0].title).toBe('List Villa B');
+    });
+
+    test('should filter by minPrice', async () => {
+      const response = await request(app)
+        .get('/api/properties?minPrice=6000000')
+        .set(orgHeaders());
+
+      expect(response.status).toBe(200);
+      expect(response.body.properties).toHaveLength(1);
+      expect(response.body.properties[0].price).toBe(8000000);
+    });
+  });
+
+  describe('GET /api/properties/:id - Get property details', () => {
+    let propertyId;
+
+    beforeEach(async () => {
+      await Property.deleteMany({ organizationId: orgId });
+      const created = await request(app)
+        .post('/api/properties')
+        .set(orgHeaders())
+        .send(propertyPayload({ title: 'Detail Property' }));
+      propertyId = created.body.property.id;
+    });
+
+    test('should return property details to an org member', async () => {
+      const response = await request(app)
+        .get(`/api/properties/${propertyId}`)
+        .set(orgHeaders());
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.property._id).toBe(propertyId);
+      expect(response.body.property.title).toBe('Detail Property');
+      expect(response.body.property.organizationId).toBe(orgId);
+      expect(response.body.property.createdBy).toBeDefined();
+    });
+
+    test('should return 404 for a non-existent property', async () => {
+      const response = await request(app)
+        .get('/api/properties/5f8f8f8f8f8f8f8f8f8f8f8f')
+        .set(orgHeaders());
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+    });
+
+    test('should block access from a different organization', async () => {
+      const otherOrg = await request(app)
+        .post('/api/orgs')
+        .set('Authorization', `Bearer ${user2Token}`)
+        .send({ name: 'PropertyTest Other Org' });
+
+      const user2OrgId = otherOrg.body.data.organization._id;
+
+      const response = await request(app)
+        .get(`/api/properties/${propertyId}`)
+        .set('Authorization', `Bearer ${user2Token}`)
+        .set('x-organization-id', user2OrgId);
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+    });
+
+    test('should deny cross-tenant access with an unowned organization header', async () => {
+      const response = await request(app)
+        .get(`/api/properties/${propertyId}`)
+        .set('Authorization', `Bearer ${user2Token}`)
+        .set('x-organization-id', orgId);
+
+      expect(response.status).toBe(403);
+      expect(response.body.success).toBe(false);
+    });
+  });
+
+  describe('PUT /api/properties/:id - Update property', () => {
+    let propertyId;
+
+    beforeEach(async () => {
+      await Property.deleteMany({ organizationId: orgId });
+      const created = await request(app)
+        .post('/api/properties')
+        .set(orgHeaders())
+        .send(propertyPayload({ title: 'Update Property' }));
+      propertyId = created.body.property.id;
+    });
+
+    test('should update the property', async () => {
+      const response = await request(app)
+        .put(`/api/properties/${propertyId}`)
+        .set(orgHeaders())
+        .send({ title: 'Updated Property Title', description: 'A freshly updated listing description.', price: 6000000, status: 'sold' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Property updated successfully');
+      expect(response.body.property.title).toBe('Updated Property Title');
+      expect(response.body.property.price).toBe(6000000);
+      expect(response.body.property.status).toBe('sold');
+    });
+
+    test('should reject updates from a non-member organization', async () => {
+      const response = await request(app)
+        .put(`/api/properties/${propertyId}`)
+        .set('Authorization', `Bearer ${user2Token}`)
+        .set('x-organization-id', orgId)
+        .send({ title: 'Hacked Title' });
+
+      expect(response.status).toBe(403);
+    });
+  });
+
+  describe('DELETE /api/properties/:id - Delete property', () => {
+    let propertyId;
+
+    beforeEach(async () => {
+      await Property.deleteMany({ organizationId: orgId });
+      const created = await request(app)
+        .post('/api/properties')
+        .set(orgHeaders())
+        .send(propertyPayload({ title: 'Delete Property' }));
+      propertyId = created.body.property.id;
+    });
+
+    test('should delete the property', async () => {
+      const response = await request(app)
+        .delete(`/api/properties/${propertyId}`)
+        .set(orgHeaders());
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+
+      const after = await request(app)
+        .get(`/api/properties/${propertyId}`)
+        .set(orgHeaders());
+      expect(after.status).toBe(404);
+    });
+
+    test('should reject deletion from a non-member organization', async () => {
+      const response = await request(app)
+        .delete(`/api/properties/${propertyId}`)
+        .set('Authorization', `Bearer ${user2Token}`)
+        .set('x-organization-id', orgId);
+
+      expect(response.status).toBe(403);
+    });
+  });
+
+  describe('GET /api/properties/search/query - Full-text search', () => {
+    beforeEach(async () => {
+      await Property.deleteMany({ organizationId: orgId });
+      await request(app).post('/api/properties').set(orgHeaders()).send(propertyPayload({
+        title: 'Mumbai Beach House',
+        description: 'A cozy beach house near Marine Drive with amazing ocean views.',
+      }));
+      await request(app).post('/api/properties').set(orgHeaders()).send(propertyPayload({
+        title: 'Mumbai Penthouse',
+        description: 'Luxury penthouse in Lower Parel with skyline views.',
+      }));
+      await request(app).post('/api/properties').set(orgHeaders()).send(propertyPayload({
+        title: 'Delhi Farmhouse',
+        description: 'Spacious farmhouse on the outskirts of Delhi.',
+      }));
+    });
+
+    test('should return matching properties', async () => {
+      const response = await request(app)
+        .get('/api/properties/search/query?q=Mumbai')
+        .set(orgHeaders());
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.query).toBe('Mumbai');
+      expect(response.body.results.length).toBe(2);
+      expect(response.body.pagination.total).toBe(2);
+    });
+
+    test('should return empty results for a miss', async () => {
+      const response = await request(app)
+        .get('/api/properties/search/query?q=nonexistentxyz')
+        .set(orgHeaders());
+
+      expect(response.status).toBe(200);
+      expect(response.body.results).toEqual([]);
+    });
+  });
+
+  describe('GET /api/properties/stats/overview - Statistics', () => {
+    test('should aggregate statistics for the organization', async () => {
+      await Property.deleteMany({ organizationId: orgId });
+      await request(app).post('/api/properties').set(orgHeaders()).send(propertyPayload({ price: 5000000, status: 'available' }));
+      await request(app).post('/api/properties').set(orgHeaders()).send(propertyPayload({ price: 3000000, status: 'sold' }));
+      await request(app).post('/api/properties').set(orgHeaders()).send(propertyPayload({ price: 1000000, status: 'available' }));
+
+      const response = await request(app)
+        .get('/api/properties/stats/overview')
+        .set(orgHeaders());
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.stats.total).toBe(3);
+      expect(response.body.stats.avgPrice).toBe(3000000);
+      expect(response.body.stats.minPrice).toBe(1000000);
+      expect(response.body.stats.maxPrice).toBe(5000000);
+      expect(response.body.stats.byStatus.available).toBe(2);
+      expect(response.body.stats.byStatus.sold).toBe(1);
+      expect(response.body.stats.byType.apartment).toBe(3);
+    });
+
+    test('should return zeroed stats for an organization with no properties', async () => {
+      const orphanOrg = await request(app)
+        .post('/api/orgs')
+        .set('Authorization', `Bearer ${user1Token}`)
+        .send({ name: 'Stats Empty Org' });
+      const newOrgId = orphanOrg.body.data.organization._id;
+
+      const response = await request(app)
+        .get('/api/properties/stats/overview')
+        .set('Authorization', `Bearer ${user1Token}`)
+        .set('x-organization-id', newOrgId);
+
+      expect(response.status).toBe(200);
+      expect(response.body.stats.total).toBe(0);
+      expect(response.body.stats.avgPrice).toBe(0);
+    });
+
+    test('should not leak another organization data via creator id', async () => {
+      expect(user1Id).toBeDefined();
+      const response = await request(app)
+        .get('/api/properties/stats/overview')
+        .set('Authorization', `Bearer ${user2Token}`)
+        .set('x-organization-id', orgId);
+
+      expect(response.status).toBe(403);
+    });
+  });
+});

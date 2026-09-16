@@ -48,6 +48,45 @@ describe('Model Schema Validation', () => {
       expect(user.role).toBe('admin');
     });
 
+    test('should default to an immutable organization account type', () => {
+      const user = new User({
+        email: 'account-type@example.com',
+        password: 'password123',
+        firstName: 'Account',
+        lastName: 'Type',
+      });
+
+      expect(user.accountType).toBe('organization');
+      expect(User.schema.path('accountType').options.immutable).toBe(true);
+    });
+
+    test('should accept a customer account type', () => {
+      const user = new User({
+        email: 'customer@example.com',
+        password: 'password123',
+        firstName: 'Customer',
+        lastName: 'User',
+        accountType: 'customer',
+      });
+
+      expect(user.validateSync()).toBeUndefined();
+      expect(user.accountType).toBe('customer');
+    });
+
+    test('should accept distinct buyer, renter, broker, and agent account types', () => {
+      ['buyer', 'renter', 'broker', 'agent'].forEach((accountType) => {
+        const user = new User({
+          email: `${accountType}@example.com`,
+          password: 'password123',
+          firstName: 'Typed',
+          lastName: 'User',
+          accountType,
+        });
+
+        expect(user.validateSync()).toBeUndefined();
+      });
+    });
+
     test('should set default isActive to true', () => {
       const user = new User({
         firstName: 'Test',
@@ -219,4 +258,3 @@ describe('Model Schema Validation', () => {
     });
   });
 });
-

@@ -264,6 +264,13 @@ router.put('/users/:id', [
   body('role').optional().isIn(['user', 'admin']),
 ], async (req, res) => {
   try {
+    if (Object.prototype.hasOwnProperty.call(req.body, 'accountType')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Account type cannot be changed after registration',
+      });
+    }
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ success: false, errors: errors.array() });

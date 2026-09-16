@@ -6,6 +6,9 @@ module.exports = {
     '**/__tests__/**/*.test.js',
     '**/__tests__/**/*.spec.js'
   ],
+  // Integration tests share a single test database; run files sequentially
+  // so per-file beforeAll cleanups cannot wipe another file's data.
+  maxWorkers: 1,
   coverageDirectory: 'coverage',
   collectCoverageFrom: [
     'src/**/*.js',

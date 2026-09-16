@@ -5,6 +5,9 @@ const Member = require('./Member');
 const Property = require('./Property');
 const Task = require('./Task');
 const AuditLog = require('./AuditLog');
+const Favorite = require('./Favorite');
+const Enquiry = require('./Enquiry');
+const SupportTicket = require('./SupportTicket');
 
 module.exports = {
   User,
@@ -13,4 +16,7 @@ module.exports = {
   Property,
   Task,
   AuditLog,
+  Favorite,
+  Enquiry,
+  SupportTicket,
 };

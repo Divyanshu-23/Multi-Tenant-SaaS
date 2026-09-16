@@ -19,6 +19,8 @@ const taskRoutes = require('./routes/taskRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const queueRoutes = require('./routes/queueRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const publicPropertyRoutes = require('./routes/publicPropertyRoutes');
+const customerRoutes = require('./routes/customerRoutes');
 
 // Import storage config for static file serving
 const path = require('path');
@@ -90,6 +92,8 @@ app.get('/', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/orgs', orgRoutes);
+app.use('/api/public/properties', publicPropertyRoutes);
+app.use('/api/customer', customerRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/uploads', uploadRoutes);

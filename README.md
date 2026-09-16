@@ -73,6 +73,7 @@ A full-stack Real Estate SaaS platform built with Node.js, Express, MongoDB, Red
 ### Phase 10: Web Application ✅
 - React SPA built with Vite and served by the same Express server
 - React Router navigation and protected customer/organization routes
+- Customer dashboard with marketplace filters, favourites, enquiries, profile, and support tickets
 - Browser routing: login, register, org switcher, dashboard, properties, tasks, members, settings
 - Role-aware UI and immutable account onboarding for customer, buyer, renter, organization, broker, and agent accounts
 - Socket.IO client wired for real-time task updates
@@ -115,6 +116,12 @@ DELETE /api/properties/:id
 POST   /api/properties/:id/images
 GET    /api/properties/search/query
 GET    /api/properties/stats/overview
+```
+
+### Public Marketplace (2 endpoints)
+```
+GET    /api/public/properties
+GET    /api/public/properties/:id
 ```
 
 ### Tasks (6 endpoints)

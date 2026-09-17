@@ -5,6 +5,8 @@
 body { margin: 0; background: var(--paper); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; }
 a { color: inherit; }
 .react-page { min-height: 100vh; }
+.auth-wrap { position: relative; }
+.auth-home { position: absolute; top: 24px; right: 24px; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3); }
 .public-nav { display: flex; align-items: center; justify-content: space-between; max-width: 1180px; margin: auto; padding: 24px 28px; }
 .brand { display: inline-flex; gap: 10px; align-items: center; font-weight: 800; letter-spacing: -.03em; text-decoration: none; font-size: 20px; }
 .brand-mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px; background: var(--ink); color: white; }

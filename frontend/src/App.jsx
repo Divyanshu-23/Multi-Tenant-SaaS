@@ -140,8 +140,8 @@ function Landing() {
   </main>;
 }
 
-function AuthLayout({ title, subtitle, children, footer }) {
-  return <div className="auth-wrap"><div className="auth-card"><Brand /><h1>{title}</h1><p className="sub">{subtitle}</p>{children}<div className="auth-footer">{footer}</div></div></div>;
+function AuthLayout({ title, subtitle, children, footer, showHome = false }) {
+  return <div className="auth-wrap">{showHome && <Link className="btn btn-primary auth-home" to="/">Home</Link>}<div className="auth-card"><Brand /><h1>{title}</h1><p className="sub">{subtitle}</p>{children}<div className="auth-footer">{footer}</div></div></div>;
 }
 
 function authFieldError(name, value) {
@@ -178,7 +178,7 @@ function Login() {
     setBusy(true); setError('');
     try { await login(form.email, form.password); } catch (err) { setError(err.message); } finally { setBusy(false); }
   };
-  return <AuthLayout title="Welcome back" subtitle="Sign in to continue to RealState." footer={<>New here? <Link to="/register">Create an account</Link></>}>
+  return <AuthLayout title="Welcome back" subtitle="Sign in to continue to RealState." showHome footer={<>New here? <Link to="/register">Create an account</Link></>}>
     <Message error={error} /><form className="form-stack" noValidate onSubmit={submit}>
       <AuthField label="Email" name="email" error={errors.email}><input className={`form-control ${errors.email ? 'input-error' : ''}`} type="email" value={form.email} onChange={update('email')} onBlur={() => setErrors({ ...errors, email: authFieldError('email', form.email) })} aria-invalid={Boolean(errors.email)} /></AuthField>
       <AuthField label="Password" name="password" error={errors.password}><input className={`form-control ${errors.password ? 'input-error' : ''}`} type="password" value={form.password} onChange={update('password')} onBlur={() => setErrors({ ...errors, password: form.password ? '' : 'Password is required.' })} aria-invalid={Boolean(errors.password)} /></AuthField>
@@ -205,7 +205,7 @@ function Register() {
     try { await register(form); } catch (err) { setError(err.data?.errors?.map((item) => item.msg).join('. ') || err.message); } finally { setBusy(false); }
   };
   const input = (key, props = {}) => <input className={`form-control ${errors[key] ? 'input-error' : ''}`} value={form[key]} onChange={update(key)} onBlur={() => setErrors({ ...errors, [key]: key === 'confirmPassword' ? (form.confirmPassword === form.password ? '' : 'Passwords do not match.') : authFieldError(key, form[key]) })} aria-invalid={Boolean(errors[key])} {...props} />;
-  return <AuthLayout title="Create your account" subtitle="Choose your path. Your account type cannot be changed later." footer={<>Already registered? <Link to="/login">Sign in</Link></>}>
+  return <AuthLayout title="Create your account" subtitle="Choose your path. Your account type cannot be changed later." showHome footer={<>Already registered? <Link to="/login">Sign in</Link></>}>
     <Message error={error} /><form className="form-stack" noValidate onSubmit={submit}>
       <div className="form-row"><AuthField label="First name" error={errors.firstName}>{input('firstName')}</AuthField><AuthField label="Last name" error={errors.lastName}>{input('lastName')}</AuthField></div>
       <AuthField label="Email" error={errors.email}>{input('email', { type: 'email' })}</AuthField>

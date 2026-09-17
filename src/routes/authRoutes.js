@@ -175,14 +175,16 @@ router.get('/me', auth, async (req, res) => {
     const memberships = await Member.find({ userId: user._id, status: 'active' })
       .populate('organizationId', 'name slug tier status branding settings createdAt');
 
-    const organizations = memberships.map((m) => ({
-      id: m.organizationId._id,
-      name: m.organizationId.name,
-      slug: m.organizationId.slug,
-      tier: m.organizationId.tier,
-      role: m.role,
-      memberId: m._id,
-    }));
+    const organizations = memberships
+      .filter((m) => m.organizationId)
+      .map((m) => ({
+        id: m.organizationId._id,
+        name: m.organizationId.name,
+        slug: m.organizationId.slug,
+        tier: m.organizationId.tier,
+        role: m.role,
+        memberId: m._id,
+      }));
 
     res.json({
       success: true,

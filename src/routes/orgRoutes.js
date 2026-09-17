@@ -71,11 +71,13 @@ router.get('/', auth, async (req, res) => {
     const memberships = await Member.find({ userId, status: 'active' })
       .populate('organizationId', 'name slug description tier status branding settings createdAt');
 
-    const organizations = memberships.map((m) => ({
-      ...m.organizationId.toObject(),
-      role: m.role,
-      memberId: m._id,
-    }));
+    const organizations = memberships
+      .filter((m) => m.organizationId)
+      .map((m) => ({
+        ...m.organizationId.toObject(),
+        role: m.role,
+        memberId: m._id,
+      }));
 
     res.json({
       success: true,
@@ -180,7 +182,7 @@ router.put('/:orgId', auth, [
 // @access  Private (admin only)
 router.post('/:orgId/members', auth, [
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-  body('role').optional().isIn(['admin', 'manager', 'member']),
+  body('role').optional().isIn(['admin', 'manager', 'broker', 'member']),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);

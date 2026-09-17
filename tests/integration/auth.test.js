@@ -148,6 +148,25 @@ describe('Auth API Integration Tests', () => {
   });
 
   describe('Account type selection', () => {
+    test('should allow a broker to authenticate without an organization', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          ...testUserData,
+          email: `broker_${Date.now()}@test.com`,
+          accountType: 'broker',
+        });
+
+      expect(response.status).toBe(201);
+      const profile = await request(app)
+        .get('/api/auth/me')
+        .set('Authorization', `Bearer ${response.body.token}`);
+
+      expect(profile.status).toBe(200);
+      expect(profile.body.user.accountType).toBe('broker');
+      expect(profile.body.organizations).toEqual([]);
+    });
+
     test('should register a customer account and return its immutable type', async () => {
       const response = await request(app)
         .post('/api/auth/register')

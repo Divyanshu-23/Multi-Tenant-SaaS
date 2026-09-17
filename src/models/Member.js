@@ -14,7 +14,7 @@ const memberSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'manager', 'member'],
+    enum: ['admin', 'manager', 'broker', 'member'],
     default: 'member',
   },
   status: {
@@ -110,6 +110,23 @@ memberSchema.pre('save', function (next) {
         canViewProperty: true,
         canCreateTask: false,
         canEditTask: false,
+        canDeleteTask: false,
+        canAssignTask: false,
+        canInviteMember: false,
+        canRemoveMember: false,
+        canUpdateMemberRole: false,
+        canUpdateOrganization: false,
+        canDeleteOrganization: false,
+      };
+      break;
+    case 'broker':
+      this.permissions = {
+        canCreateProperty: true,
+        canEditProperty: true,
+        canDeleteProperty: false,
+        canViewProperty: true,
+        canCreateTask: true,
+        canEditTask: true,
         canDeleteTask: false,
         canAssignTask: false,
         canInviteMember: false,

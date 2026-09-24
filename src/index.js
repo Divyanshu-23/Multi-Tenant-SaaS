@@ -23,6 +23,7 @@ const publicPropertyRoutes = require('./routes/publicPropertyRoutes');
 const customerRoutes = require('./routes/customerRoutes');
 const ownerRoutes = require('./routes/ownerRoutes');
 const brokerRoutes = require('./routes/brokerRoutes');
+const builderRoutes = require('./routes/builderRoutes');
 
 // Import storage config for static file serving
 const path = require('path');
@@ -98,6 +99,7 @@ app.use('/api/public/properties', publicPropertyRoutes);
 app.use('/api/customer', customerRoutes);
 app.use('/api/owner', ownerRoutes);
 app.use('/api/broker', brokerRoutes);
+app.use('/api/builder', builderRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/uploads', uploadRoutes);

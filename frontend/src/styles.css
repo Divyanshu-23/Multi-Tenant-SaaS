@@ -32,6 +32,12 @@ a { color: inherit; }
 .empty-state { padding: 45px 20px; text-align: center; color: var(--muted); border: 1px dashed #bcccdc; border-radius: 16px; }
 .owner-enquiry { align-items: flex-start; gap: 20px; }
 .owner-status { max-width: 170px; }
+.profile-photo { display: flex; align-items: center; gap: 18px; padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid #d9e2ec; }
+.profile-avatar { display: grid; place-items: center; width: 82px; height: 82px; flex: 0 0 82px; overflow: hidden; border-radius: 50%; background: #d8e2dc; color: var(--ink); font-size: 24px; font-weight: 800; }
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-photo .muted { margin: 5px 0 10px; }
+.profile-photo-button { position: relative; display: inline-block; cursor: pointer; }
+.profile-photo-button input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
 .broker-page-frame { min-height: 100vh; background: var(--paper); }
 .broker-navbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 28px; min-height: 74px; padding: 12px clamp(18px, 4vw, 56px); background: #fff; border-bottom: 1px solid #d9e2ec; box-shadow: 0 5px 20px rgba(16, 42, 67, .06); }
 .broker-brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; text-decoration: none; white-space: nowrap; }

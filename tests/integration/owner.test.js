@@ -62,6 +62,15 @@ describe('Owner API Integration Tests', () => {
     expect(response.body.user.accountType).toBe('owner');
   });
 
+  test('owner can upload and persist a profile photo', async () => {
+    const response = await request(app)
+      .post('/api/uploads/user/avatar')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .attach('avatar', Buffer.from('profile-photo-test'), 'avatar.png');
+    expect(response.status).toBe(200);
+    expect(response.body.user.avatar).toMatch(/^\/uploads\/avatars\//);
+  });
+
   test('owner enquiry list is scoped to owned properties', async () => {
     const response = await request(app).get('/api/owner/enquiries').set('Authorization', `Bearer ${ownerToken}`);
     expect(response.status).toBe(200);

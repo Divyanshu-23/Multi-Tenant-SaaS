@@ -21,6 +21,8 @@ const queueRoutes = require('./routes/queueRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const publicPropertyRoutes = require('./routes/publicPropertyRoutes');
 const customerRoutes = require('./routes/customerRoutes');
+const ownerRoutes = require('./routes/ownerRoutes');
+const brokerRoutes = require('./routes/brokerRoutes');
 
 // Import storage config for static file serving
 const path = require('path');
@@ -94,6 +96,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/orgs', orgRoutes);
 app.use('/api/public/properties', publicPropertyRoutes);
 app.use('/api/customer', customerRoutes);
+app.use('/api/owner', ownerRoutes);
+app.use('/api/broker', brokerRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/uploads', uploadRoutes);

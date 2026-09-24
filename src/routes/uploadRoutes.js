@@ -2,22 +2,28 @@
 const express = require('express');
 const { uploadImage, uploadDocument, uploadAvatar, validateFile } = require('../utils/fileUpload');
 const { saveFileLocally, deleteLocalFile } = require('../config/storage');
-const { auth, orgContext, requireOrgContext } = require('../middleware/auth');
-const { checkPermission } = require('../middleware/rbac');
+const { auth, orgContext } = require('../middleware/auth');
 const { uploadRateLimiter } = require('../middleware/rateLimiting');
 
 const router = express.Router();
-router.use(auth, orgContext, requireOrgContext);
+router.use(auth, orgContext);
+
+const propertyScope = (req) => req.organizationId
+  ? { organizationId: req.organizationId }
+  : { createdBy: req.user.id };
+const taskScope = (req) => req.organizationId
+  ? { organizationId: req.organizationId }
+  : { creator: req.user.id };
 
 // @route   POST /api/uploads/property/:id/image - Add property image
-router.post('/property/:id/image', uploadRateLimiter, checkPermission('canEditProperty'), uploadImage.single('image'), async (req, res) => {
+router.post('/property/:id/image', uploadRateLimiter, uploadImage.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No image file provided' });
     }
 
     const Property = require('../models').Property;
-    const property = await Property.findOne({ _id: req.params.id, organizationId: req.organizationId });
+    const property = await Property.findOne({ _id: req.params.id, ...propertyScope(req) });
     if (!property) {
       return res.status(404).json({ success: false, error: 'Property not found' });
     }
@@ -58,10 +64,10 @@ router.post('/property/:id/image', uploadRateLimiter, checkPermission('canEditPr
 });
 
 // @route   DELETE /api/uploads/property/:propertyId/image/:imageId - Delete property image
-router.delete('/property/:propertyId/image/:imageId', uploadRateLimiter, checkPermission('canEditProperty'), async (req, res) => {
+router.delete('/property/:propertyId/image/:imageId', uploadRateLimiter, async (req, res) => {
   try {
     const Property = require('../models').Property;
-    const property = await Property.findOne({ _id: req.params.propertyId, organizationId: req.organizationId });
+    const property = await Property.findOne({ _id: req.params.propertyId, ...propertyScope(req) });
     if (!property) {
       return res.status(404).json({ success: false, error: 'Property not found' });
     }
@@ -99,14 +105,14 @@ router.delete('/property/:propertyId/image/:imageId', uploadRateLimiter, checkPe
 });
 
 // @route   POST /api/uploads/task/:id/attachment - Add task attachment/document
-router.post('/task/:id/attachment', uploadRateLimiter, checkPermission('canEditTask'), uploadDocument.single('document'), async (req, res) => {
+router.post('/task/:id/attachment', uploadRateLimiter, uploadDocument.single('document'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No document file provided' });
     }
 
     const Task = require('../models').Task;
-    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
+    const task = await Task.findOne({ _id: req.params.id, ...taskScope(req) });
     if (!task) {
       return res.status(404).json({ success: false, error: 'Task not found' });
     }
@@ -149,10 +155,10 @@ router.post('/task/:id/attachment', uploadRateLimiter, checkPermission('canEditT
 });
 
 // @route   DELETE /api/uploads/task/:taskId/attachment/:attachmentId - Delete task attachment
-router.delete('/task/:taskId/attachment/:attachmentId', uploadRateLimiter, checkPermission('canEditTask'), async (req, res) => {
+router.delete('/task/:taskId/attachment/:attachmentId', uploadRateLimiter, async (req, res) => {
   try {
     const Task = require('../models').Task;
-    const task = await Task.findOne({ _id: req.params.taskId, organizationId: req.organizationId });
+    const task = await Task.findOne({ _id: req.params.taskId, ...taskScope(req) });
     if (!task) {
       return res.status(404).json({ success: false, error: 'Task not found' });
     }

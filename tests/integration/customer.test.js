@@ -11,7 +11,7 @@ const SupportTicket = require('../../src/models/SupportTicket');
 describe('Customer workspace API', () => {
   const suffix = Date.now();
   const customer = { firstName: 'Customer', lastName: 'Test', email: `customer_flow_${suffix}@test.com`, password: 'TestPassword123!', confirmPassword: 'TestPassword123!', phone: '9876543210', accountType: 'customer', termsAccepted: true };
-  const owner = { firstName: 'Owner', lastName: 'Test', email: `customer_owner_${suffix}@test.com`, password: 'TestPassword123!', confirmPassword: 'TestPassword123!', phone: '8765432109', accountType: 'organization', termsAccepted: true };
+  const owner = { firstName: 'Owner', lastName: 'Test', email: `customer_owner_${suffix}@test.com`, password: 'TestPassword123!', confirmPassword: 'TestPassword123!', phone: '8765432109', accountType: 'owner', termsAccepted: true };
   let customerToken; let ownerToken; let propertyId;
 
   beforeAll(async () => {

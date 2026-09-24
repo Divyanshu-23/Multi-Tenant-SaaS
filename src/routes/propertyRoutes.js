@@ -2,8 +2,7 @@
 const express = require('express');
 const { body, query, validationResult } = require('express-validator');
 const { Property } = require('../models');
-const { auth, orgContext, requireOrgContext } = require('../middleware/auth');
-const { checkPermission } = require('../middleware/rbac');
+const { auth, orgContext } = require('../middleware/auth');
 const { writeRateLimiter, readRateLimiter } = require('../middleware/rateLimiting');
 const { cachePropertiesMiddleware, cachePropertyMiddleware, invalidateOnMutation } = require('../middleware/cacheMiddleware');
 const { cacheProperties, cacheProperty, invalidateProperties } = require('../utils/cache');
@@ -11,12 +10,17 @@ const { cacheProperties, cacheProperty, invalidateProperties } = require('../uti
 const router = express.Router();
 
 // Apply auth and org context to all routes
-router.use(auth, orgContext, requireOrgContext);
+router.use(auth, orgContext);
+
+// Organization records remain tenant-scoped; new account records are creator-scoped.
+const propertyScope = (req) => req.organizationId
+  ? { organizationId: req.organizationId }
+  : { $or: [{ createdBy: req.user.id }, { brokerIds: req.user.id }] };
 
 // @route   POST /api/properties - Create property
 // @desc    Create a new property listing
-// @access  Private (canCreateProperty permission)
-router.post('/', writeRateLimiter, checkPermission('canCreateProperty'), [
+// @access  Private (organization members)
+router.post('/', writeRateLimiter, [
   body('title').notEmpty().trim().isLength({ min: 5, max: 200 }).withMessage('Title must be 5-200 characters'),
   body('description').notEmpty().isLength({ min: 10, max: 5000 }).withMessage('Description must be 10-5000 characters'),
   body('propertyType').isIn(['apartment', 'house', 'villa', 'plot', 'commercial', 'office', 'shop', 'warehouse', 'other']),
@@ -38,9 +42,9 @@ router.post('/', writeRateLimiter, checkPermission('canCreateProperty'), [
     const { organizationId, user } = req;
     const propertyData = {
       ...req.body,
-      organizationId,
       createdBy: user.id,
     };
+    if (organizationId) propertyData.organizationId = organizationId;
 
     const property = await Property.create(propertyData);
 
@@ -70,8 +74,8 @@ router.post('/', writeRateLimiter, checkPermission('canCreateProperty'), [
 
 // @route   GET /api/properties - List properties with filtering
 // @desc    Get properties with advanced filtering, pagination, sorting
-// @access  Private (canViewProperty permission)
-router.get('/', checkPermission('canViewProperty'), [
+// @access  Private (organization members)
+router.get('/', [
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
   query('sortBy').optional().isIn(['price', 'createdAt', 'views', '-price', '-createdAt', '-views']),
@@ -95,7 +99,7 @@ router.get('/', checkPermission('canViewProperty'), [
     const skip = (page - 1) * limit;
 
     // Build filter
-    const filter = { organizationId, status: { $ne: 'off_market' } };
+    const filter = { ...propertyScope(req), status: { $ne: 'off_market' } };
 
     if (req.query.propertyType) filter.propertyType = req.query.propertyType;
     if (req.query.listingType) filter.listingType = req.query.listingType;
@@ -130,7 +134,7 @@ router.get('/', checkPermission('canViewProperty'), [
       .sort(sortOption)
       .skip(skip)
       .limit(limit)
-      .select('title price location propertyType features status listingType views images createdAt');
+      .select('title price location propertyType features status listingType views images createdAt brokerIds');
 
     res.json({
       success: true,
@@ -151,8 +155,8 @@ router.get('/', checkPermission('canViewProperty'), [
 
 // @route   GET /api/properties/search/query - Search properties
 // @desc    Full-text search on properties
-// @access  Private (canViewProperty permission)
-router.get('/search/query', checkPermission('canViewProperty'), [
+// @access  Private (organization members)
+router.get('/search/query', [
   query('q').notEmpty().trim().withMessage('Search query is required'),
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
@@ -170,14 +174,14 @@ router.get('/search/query', checkPermission('canViewProperty'), [
     const { organizationId } = req;
 
     const results = await Property.find(
-      { organizationId, $text: { $search: q } },
+      { ...propertyScope(req), $text: { $search: q } },
       { score: { $meta: 'textScore' } }
     )
       .sort({ score: { $meta: 'textScore' } })
       .skip(skip)
       .limit(limit);
 
-    const total = await Property.countDocuments({ organizationId, $text: { $search: q } });
+    const total = await Property.countDocuments({ ...propertyScope(req), $text: { $search: q } });
 
     res.json({
       success: true,
@@ -199,13 +203,16 @@ router.get('/search/query', checkPermission('canViewProperty'), [
 
 // @route   GET /api/properties/stats/overview - Property statistics
 // @desc    Get property statistics for organization
-// @access  Private (canViewProperty permission)
-router.get('/stats/overview', checkPermission('canViewProperty'), async (req, res) => {
+// @access  Private (organization members)
+router.get('/stats/overview', async (req, res) => {
   try {
     const { organizationId } = req;
+    const userScope = new (require('mongoose').Types.ObjectId)(req.user.id);
 
     const stats = await Property.aggregate([
-      { $match: { organizationId: new (require('mongoose').Types.ObjectId)(organizationId) } },
+      { $match: organizationId
+        ? { organizationId: new (require('mongoose').Types.ObjectId)(organizationId) }
+        : { $or: [{ createdBy: userScope }, { brokerIds: userScope }] } },
       {
         $group: {
           _id: null,
@@ -256,13 +263,13 @@ router.get('/stats/overview', checkPermission('canViewProperty'), async (req, re
 
 // @route   GET /api/properties/:id - Get single property with caching
 // @desc    Get detailed property information
-// @access  Private (canViewProperty permission)
-router.get('/:id', readRateLimiter, cachePropertyMiddleware(), checkPermission('canViewProperty'), async (req, res) => {
+// @access  Private (organization members)
+router.get('/:id', readRateLimiter, cachePropertyMiddleware(), async (req, res) => {
   try {
     const { id } = req.params;
     const { organizationId } = req;
 
-    const property = await Property.findOne({ _id: id, organizationId })
+    const property = await Property.findOne({ _id: id, ...propertyScope(req) })
       .populate('createdBy', 'firstName lastName email');
 
     if (!property) {
@@ -289,8 +296,8 @@ router.get('/:id', readRateLimiter, cachePropertyMiddleware(), checkPermission('
 
 // @route   PUT /api/properties/:id - Update property
 // @desc    Update property details
-// @access  Private (canEditProperty permission)
-router.put('/:id', writeRateLimiter, checkPermission('canEditProperty'), [
+// @access  Private (organization members)
+router.put('/:id', writeRateLimiter, [
   body('title').optional().trim().isLength({ min: 5, max: 200 }),
   body('description').optional().isLength({ min: 10, max: 5000 }),
   body('price').optional().isInt({ min: 0 }),
@@ -306,7 +313,7 @@ router.put('/:id', writeRateLimiter, checkPermission('canEditProperty'), [
     const { organizationId } = req;
     const updates = req.body;
 
-    const property = await Property.findOne({ _id: id, organizationId });
+    const property = await Property.findOne({ _id: id, ...propertyScope(req) });
     if (!property) {
       return res.status(404).json({ success: false, error: 'Property not found' });
     }
@@ -338,13 +345,13 @@ router.put('/:id', writeRateLimiter, checkPermission('canEditProperty'), [
 
 // @route   DELETE /api/properties/:id - Delete property
 // @desc    Delete a property listing
-// @access  Private (canDeleteProperty permission)
-router.delete('/:id', writeRateLimiter, checkPermission('canDeleteProperty'), async (req, res) => {
+// @access  Private (organization members)
+router.delete('/:id', writeRateLimiter, async (req, res) => {
   try {
     const { id } = req.params;
     const { organizationId } = req;
 
-    const property = await Property.findOneAndDelete({ _id: id, organizationId });
+    const property = await Property.findOneAndDelete({ _id: id, ...propertyScope(req) });
     if (!property) {
       return res.status(404).json({ success: false, error: 'Property not found' });
     }
@@ -365,12 +372,12 @@ router.delete('/:id', writeRateLimiter, checkPermission('canDeleteProperty'), as
 
 // @route   POST /api/properties/:id/images - Add property images via file upload
 // @desc    Upload and add property images (local storage)
-// @access  Private (canEditProperty permission)
+// @access  Private (organization members)
 // @note    This route now uses file upload, not URL-based images
 const { uploadImage } = require('../utils/fileUpload');
 const { saveFileLocally } = require('../config/storage');
 
-router.post('/:id/images', writeRateLimiter, checkPermission('canEditProperty'), uploadImage.array('images', 10), async (req, res) => {
+router.post('/:id/images', writeRateLimiter, uploadImage.array('images', 10), async (req, res) => {
   try {
     const { id } = req.params;
     const { organizationId, user } = req;
@@ -379,7 +386,7 @@ router.post('/:id/images', writeRateLimiter, checkPermission('canEditProperty'),
       return res.status(400).json({ success: false, error: 'No image files provided' });
     }
 
-    const property = await Property.findOne({ _id: id, organizationId });
+    const property = await Property.findOne({ _id: id, ...propertyScope(req) });
     if (!property) {
       return res.status(404).json({ success: false, error: 'Property not found' });
     }

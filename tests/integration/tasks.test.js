@@ -21,7 +21,7 @@ describe('Task API Integration Tests', () => {
     phone: `${n}52345678${n}`,
     confirmPassword: 'TestPassword123!',
     termsAccepted: true,
-    accountType: 'organization',
+    accountType: 'owner',
   });
 
   let adminToken;
@@ -53,7 +53,7 @@ describe('Task API Integration Tests', () => {
     const invite = await request(app)
       .post(`/api/orgs/${orgId}/members`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ email: makeUser(2).email, role: 'member' });
+      .send({ email: makeUser(2).email });
     expect(invite.status).toBe(201);
   });
 
@@ -112,24 +112,31 @@ describe('Task API Integration Tests', () => {
       expect(response.body.task.status).toBe('open');
     });
 
-    test('should reject creation by a member without permission', async () => {
+    test('should allow creation by any organization member', async () => {
       const response = await request(app)
         .post('/api/tasks')
         .set(memberHeaders())
         .send(taskPayload({ title: 'Member Should Fail Here' }));
 
-      expect(response.status).toBe(403);
-      expect(response.body.success).toBe(false);
+      expect(response.status).toBe(201);
+      expect(response.body.success).toBe(true);
     });
 
-    test('should reject creation without org context', async () => {
+    test('should create a task without org context for the account owner', async () => {
       const response = await request(app)
         .post('/api/tasks')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send(taskPayload());
+        .send(taskPayload({ title: 'Direct Account Task' }));
 
-      expect(response.status).toBe(400);
-      expect(response.body.success).toBe(false);
+      expect(response.status).toBe(201);
+      expect(response.body.success).toBe(true);
+      expect(response.body.task.organizationId).toBeUndefined();
+      expect(String(response.body.task.creator)).toBe(adminId);
+
+      const listed = await request(app)
+        .get('/api/tasks')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(listed.body.tasks.some((task) => task.title === 'Direct Account Task')).toBe(true);
     });
 
     test('should reject an empty title', async () => {
@@ -273,14 +280,14 @@ describe('Task API Integration Tests', () => {
       expect(response.body.task.priority).toBe('urgent');
     });
 
-    test('should reject updates by a member without permission', async () => {
+    test('should allow updates by any organization member', async () => {
       const response = await request(app)
         .put(`/api/tasks/${taskId}`)
         .set(memberHeaders())
         .send({ status: 'completed' });
 
-      expect(response.status).toBe(403);
-      expect(response.body.success).toBe(false);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
     });
 
     test('should return 404 for a non-existent task', async () => {
@@ -320,13 +327,13 @@ describe('Task API Integration Tests', () => {
       expect(after.status).toBe(404);
     });
 
-    test('should reject deletion by a member without permission', async () => {
+    test('should allow deletion by any organization member', async () => {
       const response = await request(app)
         .delete(`/api/tasks/${taskId}`)
         .set(memberHeaders());
 
-      expect(response.status).toBe(403);
-      expect(response.body.success).toBe(false);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
     });
   });
 

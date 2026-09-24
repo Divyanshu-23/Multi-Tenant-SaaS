@@ -40,7 +40,6 @@ export async function request(path, options = {}) {
 
   const headers = {};
   if (store.token()) headers.Authorization = `Bearer ${store.token()}`;
-  if (store.org() && !noOrg && path.startsWith('/api/')) headers['x-organization-id'] = store.org();
 
   const init = { method, headers };
   if (form) init.body = form;
@@ -101,6 +100,18 @@ export const api = {
   createEnquiry: (body) => request('/api/customer/enquiries', { method: 'POST', body, noOrg: true }),
   supportTickets: () => request('/api/customer/support', { noOrg: true }),
   createSupportTicket: (body) => request('/api/customer/support', { method: 'POST', body, noOrg: true }),
+  ownerDashboard: () => request('/api/owner/dashboard', { noOrg: true }),
+  ownerEnquiries: () => request('/api/owner/enquiries', { noOrg: true }),
+  updateOwnerEnquiry: (id, body) => request(`/api/owner/enquiries/${id}`, { method: 'PUT', body, noOrg: true }),
+  ownerProfile: () => request('/api/owner/profile', { noOrg: true }),
+  updateOwnerProfile: (body) => request('/api/owner/profile', { method: 'PUT', body, noOrg: true }),
+  ownerBrokers: () => request('/api/owner/brokers', { noOrg: true }),
+  assignOwnerBroker: (propertyId, body) => request(`/api/owner/properties/${propertyId}/brokers`, { method: 'PUT', body, noOrg: true }),
+  brokerDashboard: () => request('/api/broker/dashboard', { noOrg: true }),
+  brokerEnquiries: () => request('/api/broker/enquiries', { noOrg: true }),
+  updateBrokerEnquiry: (id, body) => request(`/api/broker/enquiries/${id}`, { method: 'PUT', body, noOrg: true }),
+  brokerProfile: () => request('/api/broker/profile', { noOrg: true }),
+  updateBrokerProfile: (body) => request('/api/broker/profile', { method: 'PUT', body, noOrg: true }),
   listTasks: (params) => request('/api/tasks', { params }),
   getTask: (id) => request(`/api/tasks/${id}`),
   createTask: (body) => request('/api/tasks', { method: 'POST', body }),

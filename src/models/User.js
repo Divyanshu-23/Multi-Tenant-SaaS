@@ -44,8 +44,16 @@ const userSchema = new mongoose.Schema({
   // Account type is selected at registration and cannot be changed later.
   accountType: {
     type: String,
-    enum: ['customer', 'buyer', 'renter', 'organization', 'broker', 'agent'],
-    default: 'organization',
+    enum: ['customer', 'broker', 'owner', 'builder'],
+    default: 'customer',
+    immutable: true,
+  },
+  customerType: {
+    type: String,
+    enum: ['buyer', 'renter'],
+    default: function () {
+      return this.accountType === 'customer' ? 'buyer' : undefined;
+    },
     immutable: true,
   },
   isActive: {

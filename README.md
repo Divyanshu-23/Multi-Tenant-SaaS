@@ -25,9 +25,9 @@ A full-stack Real Estate SaaS platform built with Node.js, Express, MongoDB, Red
 - User registration with email verification
 - Login/logout, password reset flow
 - Organization (tenant) management with **enforced membership isolation**
-- Member invitation system (admin only)
-- Role-Based Access Control (Admin, Manager, Member) with role-based permissions
-- Permission-based middleware
+- Organization membership with equal access for all active members
+- Member invitation, removal, and organization management for active members
+- Global platform administrator role for system administration
 
 ### Phase 3: Property Management ✅
 - Property CRUD with validation
@@ -75,7 +75,7 @@ A full-stack Real Estate SaaS platform built with Node.js, Express, MongoDB, Red
 - React Router navigation and protected customer/organization routes
 - Customer dashboard with marketplace filters, favourites, enquiries, profile, and support tickets
 - Browser routing: login, register, org switcher, dashboard, properties, tasks, members, settings
-- Role-aware UI and immutable account onboarding for customer, buyer, renter, organization, broker, and agent accounts
+- Immutable account onboarding for customer (buyer/renter), broker, owner, and builder accounts
 - Socket.IO client wired for real-time task updates
 - Serves the SPA for browsers (`Accept: text/html`) and JSON for API clients
 
@@ -135,7 +135,8 @@ POST   /api/tasks/:id/comments
 ```
 
 All resource routes (properties, tasks) are scoped by the `x-organization-id` header
-and verified against the caller's active membership - cross-tenant access returns 403.
+and verified against the caller's active membership. All active members have equal
+workspace access; cross-tenant access returns 403.
 
 ---
 
@@ -218,7 +219,7 @@ npm run lint
 - ✅ CORS configuration
 - ✅ Security headers (Helmet with CSP for the SPA)
 - ✅ Input validation & sanitization
-- ✅ Role-based access control (RBAC) + per-permission checks
+- ✅ Equal-access organization membership with active-member checks
 - ✅ **Enforced multi-tenant isolation** - org context verifies active membership on every scoped route
 
 ---

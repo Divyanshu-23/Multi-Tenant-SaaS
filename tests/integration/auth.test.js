@@ -14,7 +14,7 @@ describe('Auth API Integration Tests', () => {
     email: `integration_${Date.now()}@test.com`,
     password: 'TestPassword123!',
     phone: '1234567890',
-    accountType: 'organization',
+    accountType: 'customer',
     confirmPassword: 'TestPassword123!',
     termsAccepted: true
   };
@@ -187,7 +187,7 @@ describe('Auth API Integration Tests', () => {
       expect(me.body.user.accountType).toBe('customer');
 
       const savedUser = await User.findById(response.body.user.id);
-      savedUser.accountType = 'organization';
+      savedUser.accountType = 'broker';
       await savedUser.save();
 
       const unchangedUser = await User.findById(response.body.user.id);

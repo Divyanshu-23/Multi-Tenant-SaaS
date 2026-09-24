@@ -21,7 +21,7 @@ const auditLogSchema = new mongoose.Schema({
 
       // Organization actions
       'org.created', 'org.updated', 'org.deleted', 'org.member_added',
-      'org.member_removed', 'org.member_role_changed', 'org.invitation_sent',
+      'org.member_removed', 'org.invitation_sent',
 
       // Property actions
       'property.created', 'property.updated', 'property.deleted',

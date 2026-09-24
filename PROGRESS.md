@@ -52,7 +52,7 @@
 - ✅ Organization (tenant) creation
 - ✅ Member invitation system
 - ✅ Role-based access control (Admin, Manager, Member)
-- ✅ Permission-based middleware
+- ✅ Equal-access organization membership
 
 **Files Created:**
 ```
@@ -247,8 +247,7 @@ curl -X POST http://localhost:5000/api/orgs \
 
 ### Multi-Tenancy
 - ✅ Organization-based isolation
-- ✅ Role-based access control (RBAC)
-- ✅ Permission system (granular permissions)
+- ✅ Organization membership isolation
 - ✅ Member invitation system
 - ✅ Organization context middleware
 
@@ -266,7 +265,7 @@ curl -X POST http://localhost:5000/api/orgs \
 1. **RESTful API Design** - Clean, conventional endpoint structure
 2. **Authentication** - JWT-based stateless auth with refresh tokens
 3. **Multi-Tenancy** - Organization-based data isolation
-4. **Role-Based Access Control** - Flexible permission system
+4. **Organization Membership** - Equal access for active members
 5. **MongoDB & Mongoose** - Schema design, indexes, relationships
 6. **Security Best Practices** - Password hashing, rate limiting, input validation
 7. **Docker** - Containerized development environment

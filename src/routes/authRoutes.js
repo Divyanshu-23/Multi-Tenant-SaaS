@@ -28,7 +28,8 @@ router.post('/register', [
   body('lastName').notEmpty().withMessage('Last name is required'),
   body('phone').optional({ checkFalsy: true }).matches(/^\d{10}$/).withMessage('Phone number must contain exactly 10 digits'),
   body('termsAccepted').custom((value) => value === true || value === 'true').withMessage('You must accept the terms and privacy policy'),
-  body('accountType').optional().isIn(['customer', 'buyer', 'renter', 'organization', 'broker', 'agent']).withMessage('Select a valid account type'),
+  body('accountType').optional().isIn(['customer', 'broker', 'owner', 'builder']).withMessage('Select a valid account type'),
+  body('customerType').optional().isIn(['buyer', 'renter']).withMessage('Select a valid customer type'),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -36,7 +37,8 @@ router.post('/register', [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { email, password, firstName, lastName, phone, accountType = 'organization' } = req.body;
+    const { email, password, firstName, lastName, phone, accountType = 'customer' } = req.body;
+    const customerType = accountType === 'customer' ? (req.body.customerType || 'buyer') : undefined;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -55,6 +57,7 @@ router.post('/register', [
       lastName,
       phone,
       accountType,
+      customerType,
       termsAccepted: true,
       termsAcceptedAt: new Date(),
     });
@@ -85,6 +88,7 @@ router.post('/register', [
         firstName: user.firstName,
         lastName: user.lastName,
         accountType: user.accountType,
+        customerType: user.customerType,
       },
       token,
       refreshToken,
@@ -148,6 +152,7 @@ router.post('/login', async (req, res) => {
         lastName: user.lastName,
         verified: user.verified,
         accountType: user.accountType,
+        customerType: user.customerType,
       },
       token,
       refreshToken,
@@ -182,7 +187,6 @@ router.get('/me', auth, async (req, res) => {
         name: m.organizationId.name,
         slug: m.organizationId.slug,
         tier: m.organizationId.tier,
-        role: m.role,
         memberId: m._id,
       }));
 
@@ -196,6 +200,7 @@ router.get('/me', auth, async (req, res) => {
         phone: user.phone,
         role: user.role,
         accountType: user.accountType,
+        customerType: user.customerType,
         verified: user.verified,
       },
       organizations,

@@ -2,17 +2,20 @@
 const express = require('express');
 const { body, query, validationResult } = require('express-validator');
 const { Task, Property, User } = require('../models');
-const { auth, orgContext, requireOrgContext } = require('../middleware/auth');
-const { checkPermission } = require('../middleware/rbac');
+const { auth, orgContext } = require('../middleware/auth');
 const { notifyOrg } = require('../config/socket');
 const { writeRateLimiter, readRateLimiter } = require('../middleware/rateLimiting');
 const { cacheTasks } = require('../utils/cache');
 
 const router = express.Router();
-router.use(auth, orgContext, requireOrgContext);
+router.use(auth, orgContext);
+
+const taskScope = (req) => req.organizationId
+  ? { organizationId: req.organizationId }
+  : { creator: req.user.id };
 
 // @route   POST /api/tasks - Create task/lead
-router.post('/', writeRateLimiter, checkPermission('canCreateTask'), [
+router.post('/', writeRateLimiter, [
   body('title').notEmpty().trim().isLength({ max: 200 }).withMessage('Title is required'),
   body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
   body('taskType').optional().isIn(['lead', 'follow_up', 'site_visit', 'negotiation', 'documentation', 'maintenance', 'other']),
@@ -22,10 +25,11 @@ router.post('/', writeRateLimiter, checkPermission('canCreateTask'), [
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
     const { organizationId, user } = req;
-    const taskData = { ...req.body, organizationId, creator: user.id };
+    const taskData = { ...req.body, creator: user.id };
+    if (organizationId) taskData.organizationId = organizationId;
 
     if (taskData.propertyId) {
-      const property = await Property.findOne({ _id: taskData.propertyId, organizationId });
+      const property = await Property.findOne({ _id: taskData.propertyId, ...(organizationId ? { organizationId } : { $or: [{ createdBy: user.id }, { brokerIds: user.id }] }) });
       if (!property) return res.status(404).json({ success: false, error: 'Property not found' });
     }
 
@@ -33,7 +37,7 @@ router.post('/', writeRateLimiter, checkPermission('canCreateTask'), [
     task.addActivity(user.id, 'created', 'Task created');
     await task.save();
 
-    notifyOrg(organizationId, 'task_created', { task });
+    if (organizationId) notifyOrg(organizationId, 'task_created', { task });
 
     // Invalidate tasks cache
     await cacheTasks.invalidate(organizationId);
@@ -53,7 +57,7 @@ router.get('/', async (req, res) => {
     const limit = req.query.limit || 10;
     const skip = (page - 1) * limit;
 
-    const filter = { organizationId };
+    const filter = taskScope(req);
     if (req.query.status) filter.status = req.query.status;
     if (req.query.priority) filter.priority = req.query.priority;
     if (req.query.taskType) filter.taskType = req.query.taskType;
@@ -79,7 +83,7 @@ router.get('/', async (req, res) => {
 // @route   GET /api/tasks/:id - Get single task
 router.get('/:id', async (req, res) => {
   try {
-    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId })
+    const task = await Task.findOne({ _id: req.params.id, ...taskScope(req) })
       .populate('assignee', 'firstName lastName email')
       .populate('creator', 'firstName lastName email')
       .populate('propertyId', 'title location price')
@@ -95,9 +99,9 @@ router.get('/:id', async (req, res) => {
 });
 
 // @route   PUT /api/tasks/:id - Update task
-router.put('/:id', checkPermission('canEditTask'), async (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
-    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
+    const task = await Task.findOne({ _id: req.params.id, ...taskScope(req) });
     if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
 
     const { user } = req;
@@ -108,7 +112,7 @@ router.put('/:id', checkPermission('canEditTask'), async (req, res) => {
     Object.keys(req.body).forEach((key) => { task[key] = req.body[key]; });
     await task.save();
 
-    notifyOrg(req.organizationId, 'task_updated', { taskId: task._id, updates: req.body });
+    if (req.organizationId) notifyOrg(req.organizationId, 'task_updated', { taskId: task._id, updates: req.body });
 
     res.json({ success: true, message: 'Task updated successfully', task });
   } catch (error) {
@@ -123,7 +127,7 @@ router.post('/:id/comments', [body('content').notEmpty().trim()], async (req, re
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
-    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
+    const task = await Task.findOne({ _id: req.params.id, ...taskScope(req) });
     if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
 
     const comment = { userId: req.user.id, content: req.body.content, createdAt: new Date() };
@@ -131,7 +135,7 @@ router.post('/:id/comments', [body('content').notEmpty().trim()], async (req, re
     task.addActivity(req.user.id, 'commented', 'Added a comment');
     await task.save();
 
-    notifyOrg(req.organizationId, 'comment_added', { taskId: task._id, comment });
+    if (req.organizationId) notifyOrg(req.organizationId, 'comment_added', { taskId: task._id, comment });
 
     res.status(201).json({ success: true, message: 'Comment added successfully', comments: task.comments });
   } catch (error) {
@@ -141,11 +145,11 @@ router.post('/:id/comments', [body('content').notEmpty().trim()], async (req, re
 });
 
 // @route   DELETE /api/tasks/:id - Delete task
-router.delete('/:id', checkPermission('canDeleteTask'), async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const task = await Task.findOneAndDelete({ _id: req.params.id, organizationId: req.organizationId });
+    const task = await Task.findOneAndDelete({ _id: req.params.id, ...taskScope(req) });
     if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
-    notifyOrg(req.organizationId, 'task_deleted', { taskId: req.params.id });
+    if (req.organizationId) notifyOrg(req.organizationId, 'task_deleted', { taskId: req.params.id });
     res.json({ success: true, message: 'Task deleted successfully' });
   } catch (error) {
     console.error('Delete task error:', error);

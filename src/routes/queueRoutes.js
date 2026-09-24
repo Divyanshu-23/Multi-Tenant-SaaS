@@ -1,7 +1,6 @@
 // src/routes/queueRoutes.js - Queue Management & Monitoring API
 const express = require('express');
 const { auth, orgContext, requireOrgContext } = require('../middleware/auth');
-const { checkRole } = require('../middleware/rbac');
 const {
   QUEUE_NAMES,
   JOB_TYPES,
@@ -15,8 +14,8 @@ const {
 
 const router = express.Router();
 
-// Require authentication and admin role for all queue operations
-router.use(auth, orgContext, requireOrgContext, checkRole('admin'));
+// Require authentication and organization membership for all queue operations
+router.use(auth, orgContext, requireOrgContext);
 
 // @route   GET /api/queues - Get all queues status
 // @desc    Get status of all background job queues

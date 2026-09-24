@@ -96,4 +96,16 @@ const requireOrgContext = (req, res, next) => {
   next();
 };
 
-module.exports = { auth, orgContext, requireOrgContext };
+const requireGlobalRole = (...allowedRoles) => async (req, res, next) => {
+  try {
+    const user = await require('../models').User.findById(req.user.id).select('role');
+    if (!user || !allowedRoles.includes(user.role)) {
+      return res.status(403).json({ success: false, error: 'Access denied. Insufficient platform permissions.' });
+    }
+    next();
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Server error during authorization' });
+  }
+};
+
+module.exports = { auth, orgContext, requireOrgContext, requireGlobalRole };

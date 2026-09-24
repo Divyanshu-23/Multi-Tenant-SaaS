@@ -55,7 +55,7 @@ describe('Property API Integration Tests', () => {
     phone: `${n}42345678${n}`,
     confirmPassword: 'TestPassword123!',
     termsAccepted: true,
-    accountType: 'organization',
+    accountType: 'owner',
   });
 
   let user1Token;
@@ -112,14 +112,22 @@ describe('Property API Integration Tests', () => {
       expect(response.body.property.location.city).toBe('Mumbai');
     });
 
-    test('should reject creation without org context', async () => {
+    test('should create a listing without org context for the account owner', async () => {
       const response = await request(app)
         .post('/api/properties')
         .set('Authorization', `Bearer ${user1Token}`)
-        .send(propertyPayload());
+        .send(propertyPayload({ title: 'Direct Account Listing' }));
 
-      expect(response.status).toBe(400);
-      expect(response.body.success).toBe(false);
+      expect(response.status).toBe(201);
+      expect(response.body.success).toBe(true);
+      const listing = await Property.findById(response.body.property.id);
+      expect(listing.organizationId).toBeUndefined();
+      expect(String(listing.createdBy)).toBe(user1Id);
+
+      const listed = await request(app)
+        .get('/api/properties')
+        .set('Authorization', `Bearer ${user1Token}`);
+      expect(listed.body.properties.some((property) => property.title === 'Direct Account Listing')).toBe(true);
     });
 
     test('should reject creation by a non-member of the organization', async () => {

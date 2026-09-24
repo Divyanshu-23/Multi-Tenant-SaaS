@@ -249,7 +249,7 @@ describe('Multi-Tenancy Isolation Integration Tests', () => {
       const response = await request(app)
         .post(`/api/orgs/${orgIds[0]}/members`)
         .set('Authorization', `Bearer ${credentials[1].token}`)
-        .send({ email: users[2].email, role: 'member' });
+        .send({ email: users[2].email });
 
       expect(response.status).toBe(403);
     });

@@ -2,8 +2,7 @@
 const express = require('express');
 const { body, query, validationResult } = require('express-validator');
 const { User, Organization, Member, Property, Task, AuditLog } = require('../models');
-const { auth, orgContext } = require('../middleware/auth');
-const { checkRole } = require('../middleware/rbac');
+const { auth, requireGlobalRole } = require('../middleware/auth');
 const { getAllQueuesStatus } = require('../config/queue');
 const { connectRedis, redisClient } = require('../config/redis');
 const connectDB = require('../config/db');
@@ -14,7 +13,7 @@ const router = express.Router();
 router.use(auth);
 
 // Admin-only routes
-router.use(checkRole('admin'));
+router.use(requireGlobalRole('admin'));
 
 // @route   GET /api/admin/dashboard - Admin dashboard overview
 // @desc    Get system overview statistics

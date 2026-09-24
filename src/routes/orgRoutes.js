@@ -40,11 +40,10 @@ router.post('/', auth, [
       createdBy: userId,
     });
 
-    // Create admin member record for the creator
+    // Create the creator's active membership.
     await Member.create({
       userId,
       organizationId: organization._id,
-      role: 'admin',
       status: 'active',
     });
 
@@ -75,7 +74,6 @@ router.get('/', auth, async (req, res) => {
       .filter((m) => m.organizationId)
       .map((m) => ({
         ...m.organizationId.toObject(),
-        role: m.role,
         memberId: m._id,
       }));
 
@@ -121,7 +119,6 @@ router.get('/:orgId', auth, async (req, res) => {
           memberCount,
         },
         isOwner: String(organization.createdBy) === userId,
-        role: member.role,
       },
     });
   } catch (error) {
@@ -131,7 +128,7 @@ router.get('/:orgId', auth, async (req, res) => {
 });
 
 // @route   PUT /api/orgs/:orgId - Update organization
-// @access  Private (admin only)
+// @access  Private (members only)
 router.put('/:orgId', auth, [
   body('name').optional().trim().isLength({ min: 2, max: 100 }),
   body('description').optional().trim(),
@@ -154,10 +151,10 @@ router.put('/:orgId', auth, [
       return res.status(404).json({ success: false, error: 'Organization not found' });
     }
 
-    // Check admin
-    const member = await Member.findOne({ userId, organizationId: orgId, role: 'admin', status: 'active' });
+    // Check membership
+    const member = await Member.findOne({ userId, organizationId: orgId, status: 'active' });
     if (!member) {
-      return res.status(403).json({ success: false, error: 'Only admins can update the organization' });
+      return res.status(403).json({ success: false, error: 'You do not have access to this organization' });
     }
 
     const allowed = ['name', 'description', 'settings', 'branding'];
@@ -179,10 +176,9 @@ router.put('/:orgId', auth, [
 });
 
 // @route   POST /api/orgs/:orgId/members - Invite member
-// @access  Private (admin only)
+// @access  Private (members only)
 router.post('/:orgId/members', auth, [
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-  body('role').optional().isIn(['admin', 'manager', 'broker', 'member']),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -192,16 +188,16 @@ router.post('/:orgId/members', auth, [
 
     const { orgId } = req.params;
     const userId = req.user.id;
-    const { email, role = 'member' } = req.body;
+    const { email } = req.body;
 
     if (!isValidOrgId(orgId)) {
       return res.status(404).json({ success: false, error: 'Organization not found' });
     }
 
-    // Check caller is admin
-    const callerMember = await Member.findOne({ userId, organizationId: orgId, role: 'admin', status: 'active' });
+    // Check caller is a member
+    const callerMember = await Member.findOne({ userId, organizationId: orgId, status: 'active' });
     if (!callerMember) {
-      return res.status(403).json({ success: false, error: 'Only admins can invite members' });
+      return res.status(403).json({ success: false, error: 'You do not have access to this organization' });
     }
 
     // Check org exists
@@ -225,7 +221,6 @@ router.post('/:orgId/members', auth, [
     const member = await Member.create({
       userId: targetUser._id,
       organizationId: orgId,
-      role,
       status: 'active',
     });
 
@@ -238,7 +233,6 @@ router.post('/:orgId/members', auth, [
           email: targetUser.email,
           firstName: targetUser.firstName,
           lastName: targetUser.lastName,
-          role: member.role,
           status: member.status,
           joinedAt: member.joinedAt,
         },
@@ -269,7 +263,7 @@ router.get('/:orgId/members', auth, async (req, res) => {
 
     const members = await Member.find({ organizationId: orgId, status: { $in: ['active', 'pending'] } })
       .populate('userId', 'firstName lastName email avatar')
-      .sort({ role: 1, createdAt: 1 });
+      .sort({ createdAt: 1 });
 
     res.json({
       success: true,
@@ -282,7 +276,7 @@ router.get('/:orgId/members', auth, async (req, res) => {
 });
 
 // @route   DELETE /api/orgs/:orgId/members/:userId - Remove member
-// @access  Private (admin only)
+// @access  Private (members only)
 router.delete('/:orgId/members/:userId', auth, async (req, res) => {
   try {
     const { orgId, userId: targetUserId } = req.params;
@@ -292,10 +286,10 @@ router.delete('/:orgId/members/:userId', auth, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Member not found' });
     }
 
-    // Check caller is admin
-    const callerMember = await Member.findOne({ userId, organizationId: orgId, role: 'admin', status: 'active' });
+    // Check caller is a member
+    const callerMember = await Member.findOne({ userId, organizationId: orgId, status: 'active' });
     if (!callerMember) {
-      return res.status(403).json({ success: false, error: 'Only admins can remove members' });
+      return res.status(403).json({ success: false, error: 'You do not have access to this organization' });
     }
 
     // Can't remove yourself

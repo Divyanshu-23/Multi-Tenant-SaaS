@@ -48,7 +48,7 @@ describe('Model Schema Validation', () => {
       expect(user.role).toBe('admin');
     });
 
-    test('should default to an immutable organization account type', () => {
+    test('should default to an immutable customer account type', () => {
       const user = new User({
         email: 'account-type@example.com',
         password: 'password123',
@@ -56,7 +56,7 @@ describe('Model Schema Validation', () => {
         lastName: 'Type',
       });
 
-      expect(user.accountType).toBe('organization');
+      expect(user.accountType).toBe('customer');
       expect(User.schema.path('accountType').options.immutable).toBe(true);
     });
 
@@ -73,14 +73,27 @@ describe('Model Schema Validation', () => {
       expect(user.accountType).toBe('customer');
     });
 
-    test('should accept distinct buyer, renter, broker, and agent account types', () => {
-      ['buyer', 'renter', 'broker', 'agent'].forEach((accountType) => {
+    test('should accept customer subtypes and business account types', () => {
+      ['customer', 'broker', 'owner', 'builder'].forEach((accountType) => {
         const user = new User({
           email: `${accountType}@example.com`,
           password: 'password123',
           firstName: 'Typed',
           lastName: 'User',
           accountType,
+        });
+
+        expect(user.validateSync()).toBeUndefined();
+      });
+
+      ['buyer', 'renter'].forEach((customerType) => {
+        const user = new User({
+          email: `${customerType}@example.com`,
+          password: 'password123',
+          firstName: 'Typed',
+          lastName: 'Customer',
+          accountType: 'customer',
+          customerType,
         });
 
         expect(user.validateSync()).toBeUndefined();

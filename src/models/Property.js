@@ -5,7 +5,7 @@ const propertySchema = new mongoose.Schema({
   organizationId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true,
+    required: false,
   },
   title: {
     type: String,
@@ -100,6 +100,10 @@ const propertySchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  brokerIds: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  }],
   views: {
     type: Number,
     default: 0,
@@ -128,6 +132,7 @@ propertySchema.index({ price: 1 });
 propertySchema.index({ propertyType: 1 });
 propertySchema.index({ listingType: 1 });
 propertySchema.index({ createdAt: -1 });
+propertySchema.index({ brokerIds: 1, status: 1 });
 propertySchema.index({ title: 'text', description: 'text' }); // Full-text search
 
 // Pre-save hook

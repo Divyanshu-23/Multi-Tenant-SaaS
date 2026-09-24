@@ -92,7 +92,9 @@ router.post('/enquiries', [
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
   const property = await Property.findOne({ _id: req.body.propertyId, status: 'available' });
   if (!property) return res.status(404).json({ success: false, error: 'Available property not found' });
-  const enquiry = await Enquiry.create({ userId: req.user.id, propertyId: property._id, organizationId: property.organizationId, message: req.body.message });
+  const enquiryData = { userId: req.user.id, propertyId: property._id, message: req.body.message };
+  if (property.organizationId) enquiryData.organizationId = property.organizationId;
+  const enquiry = await Enquiry.create(enquiryData);
   res.status(201).json({ success: true, message: 'Enquiry submitted successfully', enquiry });
 });
 

@@ -19,7 +19,7 @@ describe('Organization API Integration Tests', () => {
     phone: `${n}23456789${n}`,
     confirmPassword: 'TestPassword123!',
     termsAccepted: true,
-    accountType: 'organization',
+    accountType: 'owner',
   });
 
   let user1Token;
@@ -113,7 +113,7 @@ describe('Organization API Integration Tests', () => {
   });
 
   describe('GET /api/orgs - List user organizations', () => {
-    test("should list only the user's organizations with role and memberId", async () => {
+    test("should list only the user's organizations with memberId", async () => {
       const orgNames = ['List Org A', 'List Org B', 'List Org C'];
       for (const name of orgNames) {
         await request(app)
@@ -133,7 +133,6 @@ describe('Organization API Integration Tests', () => {
 
       const listOrg = response.body.data.organizations.find((o) => o.name === 'List Org B');
       expect(listOrg).toBeDefined();
-      expect(listOrg.role).toBe('admin');
       expect(listOrg.memberId).toBeDefined();
     });
 
@@ -175,7 +174,7 @@ describe('Organization API Integration Tests', () => {
       expect(response.body.data.organization.name).toBe('Detail Organization');
       expect(response.body.data.organization.memberCount).toBe(1);
       expect(response.body.data.isOwner).toBe(true);
-      expect(response.body.data.role).toBe('admin');
+      expect(response.body.data.role).toBeUndefined();
     });
 
     test('should reject access for a non-member', async () => {
@@ -256,14 +255,13 @@ describe('Organization API Integration Tests', () => {
       const response = await request(app)
         .post(`/api/orgs/${orgId}/members`)
         .set('Authorization', `Bearer ${user1Token}`)
-        .send({ email: userData(2).email, role: 'member' });
+        .send({ email: userData(2).email });
 
       expect(response.status).toBe(201);
       expect(response.body.success).toBe(true);
       expect(response.body.message).toBe('Member invited successfully');
       expect(response.body.data.member.user).toBe(user2Id);
       expect(response.body.data.member.email).toBe(userData(2).email);
-      expect(response.body.data.member.role).toBe('member');
       expect(response.body.data.member.status).toBe('active');
     });
 
@@ -271,7 +269,7 @@ describe('Organization API Integration Tests', () => {
       const response = await request(app)
         .post(`/api/orgs/${orgId}/members`)
         .set('Authorization', `Bearer ${user2Token}`)
-        .send({ email: `stranger_${suffix}@test.com`, role: 'member' });
+        .send({ email: `stranger_${suffix}@test.com` });
 
       expect(response.status).toBe(403);
       expect(response.body.success).toBe(false);
@@ -281,7 +279,7 @@ describe('Organization API Integration Tests', () => {
       const response = await request(app)
         .post(`/api/orgs/${orgId}/members`)
         .set('Authorization', `Bearer ${user1Token}`)
-        .send({ email: `nobody_${suffix}@test.com`, role: 'member' });
+        .send({ email: `nobody_${suffix}@test.com` });
 
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
@@ -301,7 +299,7 @@ describe('Organization API Integration Tests', () => {
       await request(app)
         .post(`/api/orgs/${orgId}/members`)
         .set('Authorization', `Bearer ${user1Token}`)
-        .send({ email: userData(3).email, role: 'member' });
+        .send({ email: userData(3).email });
     });
 
     test('should list owner and invited member', async () => {
@@ -313,10 +311,7 @@ describe('Organization API Integration Tests', () => {
       expect(response.body.success).toBe(true);
       expect(Array.isArray(response.body.data.members)).toBe(true);
       expect(response.body.data.members.length).toBe(2);
-      const roles = response.body.data.members.map((m) => m.role);
-      expect(roles).toContain('admin');
-      expect(roles).toContain('member');
-      const invited = response.body.data.members.find((m) => m.role === 'member');
+      const invited = response.body.data.members.find((m) => m.userId.email === userData(3).email);
       expect(invited.userId).toBeDefined();
       expect(invited.userId.firstName).toBe('OrgTest');
     });
@@ -344,7 +339,7 @@ describe('Organization API Integration Tests', () => {
       await request(app)
         .post(`/api/orgs/${orgId}/members`)
         .set('Authorization', `Bearer ${user1Token}`)
-        .send({ email: userData(4).email, role: 'member' });
+        .send({ email: userData(4).email });
     });
 
     test('should reject removal by a non-admin', async () => {
@@ -360,7 +355,7 @@ describe('Organization API Integration Tests', () => {
       const memberList = await request(app)
         .get(`/api/orgs/${orgId}/members`)
         .set('Authorization', `Bearer ${user1Token}`);
-      const target = memberList.body.data.members.find((m) => m.role === 'member');
+      const target = memberList.body.data.members.find((m) => m.userId.email === userData(4).email);
       expect(target).toBeDefined();
 
       const response = await request(app)

@@ -60,6 +60,16 @@ const userSchema = new mongoose.Schema({
     },
     immutable: true,
   },
+  customerPreferences: {
+    budgetMin: Number,
+    budgetMax: Number,
+    monthlyRent: Number,
+    preferredLocations: [{ type: String, trim: true }],
+    propertyTypes: [{ type: String, enum: ['apartment', 'house', 'villa', 'plot', 'commercial', 'office', 'shop', 'warehouse', 'other'] }],
+    moveInDate: Date,
+    leaseDuration: { type: String, enum: ['6_months', '11_months', '12_months', '24_months'] },
+    furnishing: { type: String, enum: ['unfurnished', 'semi-furnished', 'fully-furnished'] },
+  },
   isActive: {
     type: Boolean,
     default: true,

@@ -12,19 +12,25 @@ router.use(auth, customerOnly);
 
 router.get('/dashboard', async (req, res) => {
   try {
-    const [favoriteCount, enquiryCount, openTicketCount, recentFavorites, recentEnquiries] = await Promise.all([
+    const user = await User.findById(req.user.id).select('customerType customerPreferences');
+    const listingType = user.customerType === 'renter' ? 'rent' : 'sale';
+    const [favoriteCount, enquiryCount, openTicketCount, recentFavorites, recentEnquiries, recommendations] = await Promise.all([
       Favorite.countDocuments({ userId: req.user.id }),
       Enquiry.countDocuments({ userId: req.user.id }),
       SupportTicket.countDocuments({ userId: req.user.id, status: { $ne: 'resolved' } }),
       Favorite.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(4).populate({ path: 'propertyId', select: propertySelect }),
       Enquiry.find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(4).populate({ path: 'propertyId', select: propertySelect }),
+      Property.find({ listingType, status: 'available' }).sort({ createdAt: -1 }).limit(4).select(propertySelect),
     ]);
 
     res.json({
       success: true,
+      customerType: user.customerType,
+      preferences: user.customerPreferences || {},
       stats: { favoriteCount, enquiryCount, openTicketCount },
       recentFavorites,
       recentEnquiries,
+      recommendations,
     });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Server error loading customer dashboard' });
@@ -41,6 +47,11 @@ router.put('/profile', [
   body('firstName').optional().trim().isLength({ min: 1, max: 50 }),
   body('lastName').optional().trim().isLength({ min: 1, max: 50 }),
   body('phone').optional({ checkFalsy: true }).matches(/^\d{10}$/).withMessage('Phone number must contain exactly 10 digits'),
+  body('customerPreferences.budgetMin').optional({ checkFalsy: true }).isInt({ min: 0 }),
+  body('customerPreferences.budgetMax').optional({ checkFalsy: true }).isInt({ min: 0 }),
+  body('customerPreferences.monthlyRent').optional({ checkFalsy: true }).isInt({ min: 0 }),
+  body('customerPreferences.leaseDuration').optional().isIn(['6_months', '11_months', '12_months', '24_months']),
+  body('customerPreferences.furnishing').optional().isIn(['unfurnished', 'semi-furnished', 'fully-furnished']),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
@@ -48,6 +59,7 @@ router.put('/profile', [
   ['firstName', 'lastName', 'phone'].forEach((field) => {
     if (req.body[field] !== undefined) updates[field] = req.body[field];
   });
+  if (req.body.customerPreferences) updates.customerPreferences = req.body.customerPreferences;
   const user = await User.findByIdAndUpdate(req.user.id, { $set: updates }, { new: true, runValidators: true })
     .select('-password -verificationToken -resetToken -resetTokenExpiry');
   res.json({ success: true, message: 'Profile updated successfully', user });

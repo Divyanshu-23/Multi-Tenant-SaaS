@@ -23,6 +23,11 @@ a { color: inherit; }
 .listing-card { cursor: pointer; transition: transform .2s, box-shadow .2s; }
 .listing-card:hover { transform: translateY(-3px); box-shadow: 0 16px 30px #102a4314; }
 .listing-visual { height: 150px; display: grid; place-items: center; margin: -22px -22px 18px; border-radius: 18px 18px 0 0; background: linear-gradient(135deg, #d8e2dc, #f3c6b3); font-size: 46px; }
+.property-primary-image { display: block; width: 100%; max-height: 460px; object-fit: cover; border-radius: 14px; margin-top: 20px; }
+.property-image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+.property-image-card { min-width: 0; margin: 0; overflow: hidden; border: 1px solid #d9e2ec; border-radius: 14px; }
+.property-image-card img { display: block; width: 100%; height: 150px; object-fit: cover; }
+.property-image-card figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; font-size: 13px; }
 .listing-card h3 { margin: 8px 0; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 24px; }
 .toolbar-actions { display: flex; flex-wrap: wrap; gap: 8px; }

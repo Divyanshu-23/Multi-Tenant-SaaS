@@ -4,13 +4,14 @@ const { uploadImage, uploadDocument, uploadAvatar, validateFile } = require('../
 const { saveFileLocally, deleteLocalFile } = require('../config/storage');
 const { auth, orgContext } = require('../middleware/auth');
 const { uploadRateLimiter } = require('../middleware/rateLimiting');
+const { cacheProperties, cacheProperty } = require('../utils/cache');
 
 const router = express.Router();
 router.use(auth, orgContext);
 
 const propertyScope = (req) => req.organizationId
   ? { organizationId: req.organizationId }
-  : { createdBy: req.user.id };
+  : { $or: [{ createdBy: req.user.id }, { brokerIds: req.user.id }] };
 const taskScope = (req) => req.organizationId
   ? { organizationId: req.organizationId }
   : { creator: req.user.id };
@@ -44,12 +45,12 @@ router.post('/property/:id/image', uploadRateLimiter, uploadImage.single('image'
       filename: fileInfo.filename,
       size: fileInfo.size,
       mimetype: fileInfo.mimetype,
+      isPrimary: property.images.length === 0,
+      order: property.images.length,
     });
     await property.save();
-
-    // Add activity log
-    const user = req.user;
-    property.addActivity(user.id, 'uploaded_image', 'Image uploaded', 'images', null, { url: fileInfo.url });
+    await cacheProperty.invalidate(property._id.toString());
+    if (req.organizationId) await cacheProperties.invalidate(req.organizationId);
 
     res.status(201).json({
       success: true,
@@ -87,11 +88,11 @@ router.delete('/property/:propertyId/image/:imageId', uploadRateLimiter, async (
 
     // Remove image from property
     property.images.splice(imageIndex, 1);
+    if (image.isPrimary && property.images.length) property.images[0].isPrimary = true;
+    property.images.forEach((remainingImage, index) => { remainingImage.order = index; });
     await property.save();
-
-    // Add activity log
-    const user = req.user;
-    property.addActivity(user.id, 'deleted_image', 'Image deleted', 'images', { url: image.url }, null);
+    await cacheProperty.invalidate(property._id.toString());
+    if (req.organizationId) await cacheProperties.invalidate(req.organizationId);
 
     res.json({
       success: true,

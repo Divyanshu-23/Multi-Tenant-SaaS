@@ -229,7 +229,179 @@ function Register() {
   </AuthLayout>;
 }
 
-function Forgot() { const [email, setEmail] = useState(''); const [message, setMessage] = useState(''); return <AuthLayout title="Reset password" subtitle="We will send a reset link if the account exists." footer={<Link to="/login">Back to sign in</Link>}><form className="form-stack" onSubmit={async (event) => { event.preventDefault(); const data = await request('/api/auth/forgot-password', { method: 'POST', body: { email }, noOrg: true }); setMessage(data.message); }}><label>Email<input className="form-control" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label><Button>Send reset link</Button><Message success={message} /></form></AuthLayout>; }
+function Forgot() {
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
+  const [fieldError, setFieldError] = useState('');
+  const [message, setMessage] = useState('');
+  const [devResetUrl, setDevResetUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const err = authFieldError('email', email);
+    setFieldError(err);
+    if (err) return;
+
+    setBusy(true);
+    setError('');
+    setMessage('');
+    setDevResetUrl('');
+
+    try {
+      const data = await api.forgotPassword(email.trim());
+      setMessage(data.message || 'If a user with this email exists, a password reset link has been sent.');
+      if (data.resetUrl) {
+        setDevResetUrl(data.resetUrl);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to send password reset link. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AuthLayout
+      title="Reset password"
+      subtitle="Enter your email to receive a password reset link."
+      showHome
+      footer={<Link to="/login">Back to sign in</Link>}
+    >
+      <Message error={error} success={message} />
+      {devResetUrl && (
+        <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '6px', fontSize: '0.85rem' }}>
+          <strong>Development Mode Reset Link:</strong><br />
+          <Link to={devResetUrl.replace(/^https?:\/\/[^/]+/, '')} style={{ wordBreak: 'break-all', color: '#16a34a', fontWeight: 'bold' }}>
+            Click here to reset password directly
+          </Link>
+        </div>
+      )}
+      <form className="form-stack" noValidate onSubmit={submit}>
+        <AuthField label="Email" name="email" error={fieldError}>
+          <input
+            className={`form-control ${fieldError ? 'input-error' : ''}`}
+            type="email"
+            required
+            placeholder="you@example.com"
+            value={email}
+            onChange={(event) => { setEmail(event.target.value); setFieldError(''); setError(''); }}
+            onBlur={() => setFieldError(authFieldError('email', email))}
+            aria-invalid={Boolean(fieldError)}
+          />
+        </AuthField>
+        <Button disabled={busy}>{busy ? 'Sending link...' : 'Send reset link'}</Button>
+      </form>
+    </AuthLayout>
+  );
+}
+
+function ResetPassword() {
+  const { token: paramToken } = useParams();
+  const [searchParams] = useSearchParams();
+  const token = paramToken || searchParams.get('token') || '';
+
+  const [form, setForm] = useState({ password: '', confirmPassword: '' });
+  const [errors, setErrors] = useState({});
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const update = (key) => (event) => {
+    setForm({ ...form, [key]: event.target.value });
+    setErrors({ ...errors, [key]: '' });
+    setError('');
+  };
+
+  const validate = () => ({
+    password: authFieldError('password', form.password),
+    confirmPassword: form.confirmPassword === form.password ? '' : 'Passwords do not match.',
+  });
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!token) {
+      setError('Password reset token is missing or invalid.');
+      return;
+    }
+    const nextErrors = validate();
+    setErrors(nextErrors);
+    if (Object.values(nextErrors).some(Boolean)) return;
+
+    setBusy(true);
+    setError('');
+    try {
+      const data = await api.resetPassword({ token, password: form.password });
+      setSuccess(data.message || 'Password has been reset successfully. You can now login with your new password.');
+    } catch (err) {
+      setError(err.message || 'Failed to reset password. The link may have expired or is invalid.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!token) {
+    return (
+      <AuthLayout
+        title="Invalid reset link"
+        subtitle="This password reset link is missing a valid token."
+        showHome
+        footer={<Link to="/forgot">Request a new reset link</Link>}
+      >
+        <Message error="Password reset token is missing or invalid. Please request a new link." />
+        <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
+          <Link to="/forgot" className="btn btn-primary" style={{ display: 'inline-block' }}>
+            Request new reset link
+          </Link>
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  return (
+    <AuthLayout
+      title="Create new password"
+      subtitle="Enter a new password for your account."
+      showHome
+      footer={<Link to="/login">Back to sign in</Link>}
+    >
+      <Message error={error} success={success} />
+      {success ? (
+        <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
+          <Link to="/login" className="btn btn-primary" style={{ display: 'inline-block' }}>
+            Proceed to Sign in
+          </Link>
+        </div>
+      ) : (
+        <form className="form-stack" noValidate onSubmit={submit}>
+          <AuthField label="New password" name="password" error={errors.password}>
+            <input
+              className={`form-control ${errors.password ? 'input-error' : ''}`}
+              type="password"
+              placeholder="At least 8 characters"
+              value={form.password}
+              onChange={update('password')}
+              onBlur={() => setErrors({ ...errors, password: authFieldError('password', form.password) })}
+              aria-invalid={Boolean(errors.password)}
+            />
+          </AuthField>
+          <AuthField label="Confirm new password" name="confirmPassword" error={errors.confirmPassword}>
+            <input
+              className={`form-control ${errors.confirmPassword ? 'input-error' : ''}`}
+              type="password"
+              placeholder="Re-enter your new password"
+              value={form.confirmPassword}
+              onChange={update('confirmPassword')}
+              onBlur={() => setErrors({ ...errors, confirmPassword: form.confirmPassword === form.password ? '' : 'Passwords do not match.' })}
+              aria-invalid={Boolean(errors.confirmPassword)}
+            />
+          </AuthField>
+          <Button disabled={busy}>{busy ? 'Resetting password...' : 'Reset password'}</Button>
+        </form>
+      )}
+    </AuthLayout>
+  );
+}
 
 function CustomerNav() { const { user, logout } = useAuth(); const renter = user.customerType === 'renter'; const dashboardPath = renter ? '/renter' : '/buyer'; const marketPath = renter ? '/marketplace?mode=rent' : '/marketplace?mode=buy'; return <nav className="public-nav"><Brand /><div className="toolbar-actions"><Link className="btn btn-ghost" to={dashboardPath}>{renter ? 'Rent dashboard' : 'Buy dashboard'}</Link><Link className="btn btn-ghost" to={marketPath}>{renter ? 'Find rentals' : 'Find homes'}</Link><Link className="btn btn-ghost" to="/customer/favorites">Favorites</Link><Link className="btn btn-ghost" to="/customer/enquiries">Enquiries</Link><Link className="btn btn-ghost" to="/customer/support">Support</Link><Link className="btn btn-ghost" to="/customer/profile">{user.firstName}</Link><button className="btn btn-ghost" onClick={logout}>Logout</button></div></nav>; }
 
@@ -330,9 +502,40 @@ function Dashboard() { const { organization } = useOrg(); const [stats, setStats
 
 function Properties() { const [properties, setProperties] = useState([]); const [query, setQuery] = useState(''); const [busy, setBusy] = useState(true); const navigate = useNavigate(); const load = () => { setBusy(true); api.listProperties({ limit: 100, search: query }).then((data) => setProperties(data.properties || [])).finally(() => setBusy(false)); }; useEffect(load, []); return <><div className="page-head"><div><p className="eyebrow">Inventory</p><h1>Properties</h1></div><Link className="btn btn-primary" to="/properties/new">Add property</Link></div><div className="toolbar"><input className="form-control" style={{ maxWidth: 420 }} placeholder="Search properties" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && load()} /><button className="btn btn-ghost" onClick={load}>Search</button></div>{busy ? <Loading /> : properties.length ? <div className="card-grid">{properties.map((property) => <article className="listing-card" key={property._id} onClick={() => navigate(`/properties/${property._id}`)}><div className="listing-visual">🏠</div><span className="badge badge-blue">{property.status}</span><h3>{property.title}</h3><p className="muted">{property.location?.city}, {property.location?.state}</p><strong>₹{Number(property.price || 0).toLocaleString('en-IN')}</strong></article>)}</div> : <div className="empty-state">No properties found.</div>}</>; }
 
-function PropertyForm() { const navigate = useNavigate(); const [error, setError] = useState(''); const [form, setForm] = useState({ title: '', description: '', propertyType: 'apartment', listingType: 'sale', price: '', city: '', state: '', address: '', superArea: '', ownerName: '', ownerPhone: '' }); const update = (key) => (event) => setForm({ ...form, [key]: event.target.value }); return <section className="panel narrow"><div className="panel-head"><h2>Add property</h2><Link to="/properties">Cancel</Link></div><Message error={error} /><form className="form-stack" onSubmit={async (event) => { event.preventDefault(); try { const payload = { title: form.title, description: form.description, propertyType: form.propertyType, listingType: form.listingType, price: Number(form.price), location: { address: form.address, city: form.city, state: form.state }, features: { superArea: Number(form.superArea) }, area: { superArea: Number(form.superArea) }, owner: { name: form.ownerName, phone: form.ownerPhone } }; const data = await api.createProperty(payload); navigate(`/properties/${data.property.id}`); } catch (err) { setError(err.message); } }}><input className="form-control" required minLength="5" placeholder="Property title" value={form.title} onChange={update('title')} /><textarea className="form-control" required placeholder="Description" value={form.description} onChange={update('description')} /><div className="form-row"><select className="form-control" value={form.propertyType} onChange={update('propertyType')}><option>apartment</option><option>house</option><option>villa</option><option>plot</option><option>commercial</option></select><select className="form-control" value={form.listingType} onChange={update('listingType')}><option>sale</option><option>rent</option><option>lease</option></select></div><div className="form-row"><input className="form-control" required type="number" placeholder="Price" value={form.price} onChange={update('price')} /><input className="form-control" required type="number" placeholder="Super area" value={form.superArea} onChange={update('superArea')} /></div><div className="form-row"><input className="form-control" required placeholder="City" value={form.city} onChange={update('city')} /><input className="form-control" required placeholder="State" value={form.state} onChange={update('state')} /></div><input className="form-control" required placeholder="Address" value={form.address} onChange={update('address')} /><div className="form-row"><input className="form-control" required placeholder="Owner name" value={form.ownerName} onChange={update('ownerName')} /><input className="form-control" required placeholder="Owner phone" value={form.ownerPhone} onChange={update('ownerPhone')} /></div><Button>Create property</Button></form></section>; }
+function PropertyForm({ editing = false }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(editing);
+  const [form, setForm] = useState({ title: '', description: '', propertyType: 'apartment', listingType: 'sale', price: '', city: '', state: '', address: '', superArea: '', ownerName: '', ownerPhone: '' });
+  useEffect(() => {
+    if (!editing) return;
+    api.getProperty(id).then(({ property }) => setForm({ title: property.title || '', description: property.description || '', propertyType: property.propertyType || 'apartment', listingType: property.listingType || 'sale', price: property.price ?? '', city: property.location?.city || '', state: property.location?.state || '', address: property.location?.address || '', superArea: property.area?.superArea ?? property.features?.superArea ?? '', ownerName: property.owner?.name || '', ownerPhone: property.owner?.phone || '' })).catch((err) => setError(err.message)).finally(() => setLoading(false));
+  }, [editing, id]);
+  const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
+  if (loading) return <Loading />;
+  return <section className="panel narrow"><div className="panel-head"><h2>{editing ? 'Edit property' : 'Add property'}</h2><Link to={editing ? `/properties/${id}` : '/properties'}>Cancel</Link></div><Message error={error} /><form className="form-stack" onSubmit={async (event) => {
+    event.preventDefault();
+    const payload = { title: form.title, description: form.description, propertyType: form.propertyType, listingType: form.listingType, price: Number(form.price), location: { address: form.address, city: form.city, state: form.state }, features: { superArea: Number(form.superArea) }, area: { superArea: Number(form.superArea) }, owner: { name: form.ownerName, phone: form.ownerPhone } };
+    try { if (editing) await api.updateProperty(id, payload); else { const data = await api.createProperty(payload); navigate(`/properties/${data.property.id}`); return; } navigate(`/properties/${id}`); } catch (err) { setError(err.message); }
+  }}><input className="form-control" required minLength="5" placeholder="Property title" value={form.title} onChange={update('title')} /><textarea className="form-control" required placeholder="Description" value={form.description} onChange={update('description')} /><div className="form-row"><select className="form-control" value={form.propertyType} onChange={update('propertyType')}><option>apartment</option><option>house</option><option>villa</option><option>plot</option><option>commercial</option><option>office</option><option>shop</option><option>warehouse</option><option>other</option></select><select className="form-control" value={form.listingType} onChange={update('listingType')}><option>sale</option><option>rent</option><option>lease</option></select></div><div className="form-row"><input className="form-control" required type="number" min="0" placeholder="Price" value={form.price} onChange={update('price')} /><input className="form-control" required type="number" min="1" placeholder="Super area" value={form.superArea} onChange={update('superArea')} /></div><div className="form-row"><input className="form-control" required placeholder="City" value={form.city} onChange={update('city')} /><input className="form-control" required placeholder="State" value={form.state} onChange={update('state')} /></div><input className="form-control" required placeholder="Address" value={form.address} onChange={update('address')} /><div className="form-row"><input className="form-control" required placeholder="Owner name" value={form.ownerName} onChange={update('ownerName')} /><input className="form-control" required placeholder="Owner phone" value={form.ownerPhone} onChange={update('ownerPhone')} /></div><Button>{editing ? 'Save changes' : 'Create property'}</Button></form></section>;
+}
 
-function PropertyDetail() { const { id } = useParams(); const navigate = useNavigate(); const [property, setProperty] = useState(null); const [error, setError] = useState(''); useEffect(() => { api.getProperty(id).then((data) => setProperty(data.property)).catch((err) => setError(err.message)); }, [id]); if (error) return <Message error={error} />; if (!property) return <Loading />; return <><div className="page-head"><div><p className="eyebrow">Property detail</p><h1>{property.title}</h1><p className="muted">{property.location?.address}, {property.location?.city}</p></div><button className="btn btn-danger" onClick={async () => { await api.deleteProperty(id); navigate('/properties'); }}>Delete</button></div><section className="panel"><div className="stats-grid"><div><span className="muted">Price</span><h2>₹{Number(property.price || 0).toLocaleString('en-IN')}</h2></div><div><span className="muted">Status</span><h2>{property.status}</h2></div><div><span className="muted">Type</span><h2>{property.propertyType}</h2></div></div><p>{property.description}</p></section></>; }
+function PropertyDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [property, setProperty] = useState(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = () => api.getProperty(id).then((data) => setProperty(data.property)).catch((err) => setError(err.message));
+  useEffect(() => { load(); }, [id]);
+  const upload = async (event) => { const files = Array.from(event.target.files || []); event.target.value = ''; if (!files.length) return; setBusy(true); setError(''); try { for (const file of files) { const form = new FormData(); form.append('image', file); await api.uploadPropertyImage(id, form); } await load(); } catch (err) { setError(err.message); } finally { setBusy(false); } };
+  const removeImage = async (imageId) => { setBusy(true); setError(''); try { await api.deletePropertyImage(id, imageId); await load(); } catch (err) { setError(err.message); } finally { setBusy(false); } };
+  if (error && !property) return <Message error={error} />;
+  if (!property) return <Loading />;
+  const primaryImage = property.images?.find((image) => image.isPrimary) || property.images?.[0];
+  return <><div className="page-head"><div><p className="eyebrow">Property detail</p><h1>{property.title}</h1><p className="muted">{property.location?.address}, {property.location?.city}</p></div><div className="toolbar-actions"><Link className="btn btn-ghost" to={`/properties/${id}/edit`}>Edit property</Link><button className="btn btn-danger" onClick={async () => { await api.deleteProperty(id); navigate('/properties'); }}>Delete</button></div></div><Message error={error} /><section className="panel"><div className="stats-grid"><div><span className="muted">Price</span><h2>₹{Number(property.price || 0).toLocaleString('en-IN')}</h2></div><div><span className="muted">Status</span><h2>{property.status}</h2></div><div><span className="muted">Type</span><h2>{property.propertyType}</h2></div></div><p>{property.description}</p>{primaryImage && <img className="property-primary-image" src={primaryImage.url} alt={primaryImage.caption || property.title} />}</section><section className="panel"><div className="panel-head"><div><h2>Property photos</h2><p className="muted">Add photos to make this listing easier to explore.</p></div><label className="btn btn-primary">{busy ? 'Please wait…' : 'Add photos'}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple disabled={busy} onChange={upload} hidden /></label></div>{property.images?.length ? <div className="property-image-grid">{property.images.map((image) => <figure className="property-image-card" key={image._id}><img src={image.url} alt={image.caption || property.title} /><figcaption><span>{image.isPrimary ? 'Primary photo' : image.caption || 'Property photo'}</span><button type="button" className="btn btn-danger" disabled={busy} onClick={() => removeImage(image._id)}>Remove</button></figcaption></figure>)}</div> : <div className="empty-state">No photos added yet.</div>}</section></>;
+}
 
 function Tasks() { const [tasks, setTasks] = useState([]); const [busy, setBusy] = useState(true); const load = () => { setBusy(true); api.listTasks({ limit: 100 }).then((data) => setTasks(data.tasks || [])).finally(() => setBusy(false)); }; useEffect(load, []); return <><div className="page-head"><div><p className="eyebrow">Operations</p><h1>Tasks</h1></div><Link className="btn btn-primary" to="/tasks/new">New task</Link></div>{busy ? <Loading /> : <section className="panel">{tasks.length ? tasks.map((task) => <Link className="list-row" key={task._id} to={`/tasks/${task._id}`}><div><strong>{task.title}</strong><div className="muted">{task.taskType} · {task.priority}</div></div><span className="badge badge-blue">{task.status}</span></Link>) : <div className="empty-state">No tasks yet.</div>}</section>}</>; }
 
@@ -344,6 +547,6 @@ function Members() { const { orgId, members, setMembers } = useOrg(); const [ema
 
 function Settings() { const { organization, orgId } = useOrg(); const [name, setName] = useState(organization?.name || ''); const [description, setDescription] = useState(organization?.description || ''); const [message, setMessage] = useState(''); useEffect(() => { setName(organization?.name || ''); setDescription(organization?.description || ''); }, [organization]); if (!organization) return <Loading />; return <section className="panel narrow"><div className="panel-head"><h2>Organization settings</h2></div><form className="form-stack" onSubmit={async (event) => { event.preventDefault(); await api.updateOrg(orgId, { name, description }); setMessage('Settings saved.'); }}><label>Name<input className="form-control" value={name} onChange={(event) => setName(event.target.value)} /></label><label>Description<textarea className="form-control" value={description} onChange={(event) => setDescription(event.target.value)} /></label><Button>Save changes</Button><Message success={message} /></form></section>; }
 
- function App() { return <AuthProvider><OrgProvider><SocketBridge /><Routes><Route path="/" element={<Landing />} /><Route path="/marketplace" element={<Protected customer><Marketplace /></Protected>} /><Route path="/marketplace/:id" element={<Protected customer><MarketplaceDetail /></Protected>} /><Route path="/login" element={<Login />} /><Route path="/register" element={<Register />} /><Route path="/forgot" element={<Forgot />} /><Route element={<Protected broker><BrokerLayout /></Protected>}><Route path="/broker" element={<BrokerHome />} /><Route path="/broker/leads" element={<BrokerLeads />} /><Route path="/broker/profile" element={<BrokerProfile />} /></Route><Route element={<Protected builder><BuilderPageFrame /></Protected>}><Route path="/builder" element={<Dashboard />} /><Route path="/builder/profile" element={<BuilderProfile />} /></Route><Route path="/buyer" element={<Protected customer customerType="buyer"><CustomerRoleHome /></Protected>} /><Route path="/renter" element={<Protected customer customerType="renter"><CustomerRoleHome renter /></Protected>} /><Route path="/customer" element={<Protected customer><CustomerHome /></Protected>} /><Route path="/customer/favorites" element={<Protected customer><CustomerFavorites /></Protected>} /><Route path="/customer/enquiries" element={<Protected customer><CustomerEnquiries /></Protected>} /><Route path="/customer/support" element={<Protected customer><CustomerSupport /></Protected>} /><Route path="/customer/profile" element={<Protected customer><CustomerProfile /></Protected>} /><Route element={<Protected owner><OwnerLayout /></Protected>}><Route path="/owner" element={<OwnerHome />} /><Route path="/owner/enquiries" element={<OwnerEnquiries />} /><Route path="/owner/brokers" element={<OwnerBrokers />} /><Route path="/owner/profile" element={<OwnerProfile />} /></Route><Route path="/org" element={<Navigate to="/dashboard" replace />} /><Route element={<Protected><OrganizationLayout /></Protected>}><Route path="/dashboard" element={<Dashboard />} /><Route path="/properties" element={<Properties />} /><Route path="/properties/new" element={<PropertyForm />} /><Route path="/properties/:id" element={<PropertyDetail />} /><Route path="/tasks" element={<Tasks />} /><Route path="/tasks/new" element={<TaskForm />} /><Route path="/tasks/:id" element={<TaskDetail />} /></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes></OrgProvider></AuthProvider>; }
+ function App() { return <AuthProvider><OrgProvider><SocketBridge /><Routes><Route path="/" element={<Landing />} /><Route path="/marketplace" element={<Protected customer><Marketplace /></Protected>} /><Route path="/marketplace/:id" element={<Protected customer><MarketplaceDetail /></Protected>} /><Route path="/login" element={<Login />} /><Route path="/register" element={<Register />} /><Route path="/forgot" element={<Forgot />} /><Route path="/reset-password" element={<ResetPassword />} /><Route path="/reset-password/:token" element={<ResetPassword />} /><Route path="/reset" element={<ResetPassword />} /><Route element={<Protected broker><BrokerLayout /></Protected>}><Route path="/broker" element={<BrokerHome />} /><Route path="/broker/leads" element={<BrokerLeads />} /><Route path="/broker/profile" element={<BrokerProfile />} /></Route><Route element={<Protected builder><BuilderPageFrame /></Protected>}><Route path="/builder" element={<Dashboard />} /><Route path="/builder/profile" element={<BuilderProfile />} /></Route><Route path="/buyer" element={<Protected customer customerType="buyer"><CustomerRoleHome /></Protected>} /><Route path="/renter" element={<Protected customer customerType="renter"><CustomerRoleHome renter /></Protected>} /><Route path="/customer" element={<Protected customer><CustomerHome /></Protected>} /><Route path="/customer/favorites" element={<Protected customer><CustomerFavorites /></Protected>} /><Route path="/customer/enquiries" element={<Protected customer><CustomerEnquiries /></Protected>} /><Route path="/customer/support" element={<Protected customer><CustomerSupport /></Protected>} /><Route path="/customer/profile" element={<Protected customer><CustomerProfile /></Protected>} /><Route element={<Protected owner><OwnerLayout /></Protected>}><Route path="/owner" element={<OwnerHome />} /><Route path="/owner/enquiries" element={<OwnerEnquiries />} /><Route path="/owner/brokers" element={<OwnerBrokers />} /><Route path="/owner/profile" element={<OwnerProfile />} /></Route><Route path="/org" element={<Navigate to="/dashboard" replace />} /><Route element={<Protected><OrganizationLayout /></Protected>}><Route path="/dashboard" element={<Dashboard />} /><Route path="/properties" element={<Properties />} /><Route path="/properties/new" element={<PropertyForm />} /><Route path="/properties/:id/edit" element={<PropertyForm editing />} /><Route path="/properties/:id" element={<PropertyDetail />} /><Route path="/tasks" element={<Tasks />} /><Route path="/tasks/new" element={<TaskForm />} /><Route path="/tasks/:id" element={<TaskDetail />} /></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes></OrgProvider></AuthProvider>; }
 
 export default App;

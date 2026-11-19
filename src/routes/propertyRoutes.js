@@ -302,6 +302,8 @@ router.put('/:id', writeRateLimiter, [
   body('description').optional().isLength({ min: 10, max: 5000 }),
   body('price').optional().isInt({ min: 0 }),
   body('status').optional().isIn(['available', 'sold', 'rented', 'under_negotiation', 'off_market']),
+  body('propertyType').optional().isIn(['apartment', 'house', 'villa', 'plot', 'commercial', 'office', 'shop', 'warehouse', 'other']),
+  body('listingType').optional().isIn(['sale', 'rent', 'lease']),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -319,7 +321,7 @@ router.put('/:id', writeRateLimiter, [
     }
 
     // Update allowed fields
-    const allowedFields = ['title', 'description', 'price', 'status', 'location', 'features', 'amenities', 'owner'];
+    const allowedFields = ['title', 'description', 'price', 'status', 'location', 'features', 'area', 'propertyType', 'listingType', 'amenities', 'owner'];
     Object.keys(updates).forEach((key) => {
       if (allowedFields.includes(key)) {
         property[key] = updates[key];

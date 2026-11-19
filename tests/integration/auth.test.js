@@ -287,4 +287,154 @@ describe('Auth API Integration Tests', () => {
       expect(response.body).toHaveProperty('success', false);
     });
   });
+
+  describe('Password Reset Flow', () => {
+    let resetUserEmail;
+    const initialPassword = 'InitialPassword123!';
+    const newPassword = 'NewSecretPassword456!';
+
+    beforeEach(async () => {
+      resetUserEmail = `forgot_test_${Date.now()}@test.com`;
+      await request(app)
+        .post('/api/auth/register')
+        .send({
+          ...testUserData,
+          email: resetUserEmail,
+          password: initialPassword,
+          confirmPassword: initialPassword,
+        });
+    });
+
+    describe('POST /api/auth/forgot-password', () => {
+      test('should generate reset token for existing user and return success message', async () => {
+        const response = await request(app)
+          .post('/api/auth/forgot-password')
+          .send({ email: resetUserEmail });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body.message).toMatch(/password reset link/i);
+        expect(response.body).toHaveProperty('resetToken');
+
+        const user = await User.findOne({ email: resetUserEmail });
+        expect(user.resetToken).toBeDefined();
+        expect(user.resetTokenExpiry).toBeDefined();
+        expect(user.resetTokenExpiry.getTime()).toBeGreaterThan(Date.now());
+      });
+
+      test('should return success message even if email is not registered to prevent enumeration', async () => {
+        const response = await request(app)
+          .post('/api/auth/forgot-password')
+          .send({ email: 'nonexistent_account_12345@test.com' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toHaveProperty('success', true);
+        expect(response.body.message).toMatch(/password reset link/i);
+      });
+
+      test('should reject forgot-password with invalid email', async () => {
+        const response = await request(app)
+          .post('/api/auth/forgot-password')
+          .send({ email: 'not-an-email' });
+
+        expect(response.status).toBe(400);
+        expect(response.body).toHaveProperty('success', false);
+      });
+
+      test('should reject forgot-password without email', async () => {
+        const response = await request(app)
+          .post('/api/auth/forgot-password')
+          .send({});
+
+        expect(response.status).toBe(400);
+        expect(response.body).toHaveProperty('success', false);
+      });
+    });
+
+    describe('POST /api/auth/reset-password', () => {
+      let validResetToken;
+
+      beforeEach(async () => {
+        const forgotResponse = await request(app)
+          .post('/api/auth/forgot-password')
+          .send({ email: resetUserEmail });
+
+        validResetToken = forgotResponse.body.resetToken;
+      });
+
+      test('should reset password with valid token and allow login with new password', async () => {
+        const resetResponse = await request(app)
+          .post('/api/auth/reset-password')
+          .send({
+            token: validResetToken,
+            password: newPassword,
+          });
+
+        expect(resetResponse.status).toBe(200);
+        expect(resetResponse.body).toHaveProperty('success', true);
+        expect(resetResponse.body.message).toMatch(/successfully/i);
+
+        // Verify user resetToken was cleared
+        const user = await User.findOne({ email: resetUserEmail });
+        expect(user.resetToken).toBeUndefined();
+
+        // Old password must fail
+        const oldLogin = await request(app)
+          .post('/api/auth/login')
+          .send({ email: resetUserEmail, password: initialPassword });
+        expect(oldLogin.status).toBe(401);
+
+        // New password must succeed
+        const newLogin = await request(app)
+          .post('/api/auth/login')
+          .send({ email: resetUserEmail, password: newPassword });
+        expect(newLogin.status).toBe(200);
+        expect(newLogin.body).toHaveProperty('token');
+      });
+
+      test('should reject reset with invalid token', async () => {
+        const response = await request(app)
+          .post('/api/auth/reset-password')
+          .send({
+            token: 'completely-invalid-jwt-token',
+            password: newPassword,
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body).toHaveProperty('success', false);
+        expect(response.body.error).toMatch(/invalid.*token/i);
+      });
+
+      test('should reject reset with weak password', async () => {
+        const response = await request(app)
+          .post('/api/auth/reset-password')
+          .send({
+            token: validResetToken,
+            password: 'short',
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body).toHaveProperty('success', false);
+      });
+
+      test('should reject reset with expired token', async () => {
+        // Artificially expire token in DB
+        await User.updateOne(
+          { email: resetUserEmail },
+          { resetTokenExpiry: new Date(Date.now() - 10000) }
+        );
+
+        const response = await request(app)
+          .post('/api/auth/reset-password')
+          .send({
+            token: validResetToken,
+            password: newPassword,
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body).toHaveProperty('success', false);
+        expect(response.body.error).toMatch(/expired/i);
+      });
+    });
+  });
 });

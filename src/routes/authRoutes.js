@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const { User, Organization, Member } = require('../models');
 const { auth, orgContext } = require('../middleware/auth');
 const { generateToken, generateRefreshToken, verifyToken } = require('../utils/generateToken');
-const { sendVerificationEmail } = require('../utils/emailService');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/emailService');
 const { jwt: jwtConfig } = require('../config/env');
 
 const router = express.Router();
@@ -319,10 +319,20 @@ router.post('/verify-email', async (req, res) => {
 // @route   POST /api/auth/forgot-password
 // @desc    Request password reset
 // @access  Public
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', [
+  body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
+], async (req, res) => {
   try {
-    const { email } = req.body;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: errors.array()[0]?.msg || 'Please provide a valid email',
+        errors: errors.array(),
+      });
+    }
 
+    const email = (req.body.email || '').trim().toLowerCase();
     if (!email) {
       return res.status(400).json({
         success: false,
@@ -333,7 +343,7 @@ router.post('/forgot-password', async (req, res) => {
     // Find user
     const user = await User.findOne({ email });
     if (!user) {
-      // Don't reveal if user exists or not
+      // Don't reveal if user exists or not for security
       return res.json({
         success: true,
         message: 'If a user with this email exists, a password reset link has been sent.',
@@ -348,18 +358,29 @@ router.post('/forgot-password', async (req, res) => {
     user.resetTokenExpiry = Date.now() + 3600000; // 1 hour
     await user.save();
 
+    const frontendBaseUrl = req.headers.origin || process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:5000';
+    const resetUrl = `${frontendBaseUrl}/reset-password?token=${resetToken}`;
+
     // Send reset email
     try {
-      // Note: In production, you'd need to implement sendPasswordResetEmail
-      console.log(`Password reset token for ${email}: ${resetToken}`);
+      await sendPasswordResetEmail(user.email, resetToken, user.getFullName());
     } catch (emailError) {
-      console.error('Failed to send password reset email:', emailError);
+      console.error('Failed to send password reset email:', emailError.message || emailError);
     }
 
-    res.json({
+    console.log(`🔑 Password reset link for ${email}: ${resetUrl}`);
+
+    const responseData = {
       success: true,
       message: 'If a user with this email exists, a password reset link has been sent.',
-    });
+    };
+
+    if (process.env.NODE_ENV !== 'production') {
+      responseData.resetUrl = resetUrl;
+      responseData.resetToken = resetToken;
+    }
+
+    res.json(responseData);
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(500).json({
@@ -374,18 +395,35 @@ router.post('/forgot-password', async (req, res) => {
 // @access  Public
 router.post('/reset-password', [
   body('token').notEmpty().withMessage('Token is required'),
-  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('password')
+    .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
+    .matches(/[a-z]/).withMessage('Password must include a lowercase letter')
+    .matches(/[A-Z]/).withMessage('Password must include an uppercase letter')
+    .matches(/\d/).withMessage('Password must include a number')
+    .matches(/[^A-Za-z\d]/).withMessage('Password must include a special character'),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
+      return res.status(400).json({
+        success: false,
+        error: errors.array()[0]?.msg || 'Validation failed',
+        errors: errors.array(),
+      });
     }
 
     const { token, password } = req.body;
 
     // Verify token
-    const decoded = verifyToken(token);
+    let decoded;
+    try {
+      decoded = verifyToken(token);
+    } catch (_tokenErr) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired reset token',
+      });
+    }
 
     // Find user
     const user = await User.findById(decoded.id);
@@ -424,9 +462,9 @@ router.post('/reset-password', [
     });
   } catch (error) {
     console.error('Reset password error:', error);
-    res.status(400).json({
+    res.status(500).json({
       success: false,
-      error: 'Invalid or expired reset token',
+      error: 'Server error',
     });
   }
 });
